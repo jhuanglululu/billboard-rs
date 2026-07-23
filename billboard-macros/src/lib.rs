@@ -10,9 +10,13 @@ use syn::{Ident, ItemFn, Token, braced, parenthesized, parse_macro_input};
 
 /// Marks the animation entry point.
 ///
-/// Emits the `_billboard_main` wasm export (runtime init + the user's fn as
-/// task 0) and the `_billboard_abi` version-handshake export, so the plugin
-/// can refuse modules built against a different ABI before running them.
+/// Requires `fn main() -> ExitCode`. Emits the `_billboard_main` wasm export
+/// (runtime init + the user's fn as task 0, whose returned [`ExitCode`]
+/// crosses the ABI as an `i32`) and the `_billboard_abi` version-handshake
+/// export, so the plugin can refuse modules built against a different ABI
+/// before running them.
+///
+/// [`ExitCode`]: ../billboard/enum.ExitCode.html
 #[proc_macro_attribute]
 pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let func = parse_macro_input!(item as ItemFn);
@@ -20,7 +24,7 @@ pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
     if !func.sig.inputs.is_empty() || func.sig.asyncness.is_some() {
         return syn::Error::new_spanned(
             &func.sig,
-            "#[billboard::main] requires a plain `fn name()` with no arguments",
+            "#[billboard::main] requires `fn name() -> ExitCode` with no arguments",
         )
         .to_compile_error()
         .into();
@@ -29,9 +33,13 @@ pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #func
 
         #[unsafe(no_mangle)]
-        pub extern "C" fn _billboard_main() {
+        pub extern "C" fn _billboard_main() -> i32 {
             ::billboard::__rt::init();
-            #name();
+            // Bind the result to `ExitCode` so a wrong return type fails here
+            // with a clear "expected ExitCode" mismatch rather than deep in
+            // the conversion.
+            let __code: ::billboard::ExitCode = #name();
+            __code.as_i32()
         }
 
         #[unsafe(no_mangle)]

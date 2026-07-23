@@ -9,15 +9,17 @@
 //! use billboard::prelude::*;
 //!
 //! #[billboard::main]
-//! fn main() {
+//! fn main() -> ExitCode {
 //!     let mut d = BlockDisplay::spawn("minecraft:sea_lantern", Position::ZERO);
 //!     d.move_to(Position::new(0.0, 5.0, 0.0), Ticks::new(40));
 //!     sleep(Ticks::new(40));
-//! } // drop despawns; main returning ends the animation
+//!     ExitCode::End // drop despawns; the code tells the host how to clean up
+//! }
 //! ```
 
 mod abi;
 pub mod entity;
+mod exit;
 pub mod math;
 mod task;
 
@@ -30,6 +32,7 @@ pub mod __rt;
 pub const ABI_VERSION: i32 = 1;
 
 pub use billboard_macros::main;
+pub use exit::ExitCode;
 pub use task::{Task, sleep, spawn};
 
 /// Write a debug message to the server console.
@@ -44,5 +47,5 @@ pub mod prelude {
     pub use crate::math::{
         Degrees, Offset, Position, Radians, Rotation, Scale, Ticks, Vector3d, Vector3i, Velocity,
     };
-    pub use crate::{Task, log, main, sleep, spawn};
+    pub use crate::{ExitCode, Task, log, main, sleep, spawn};
 }

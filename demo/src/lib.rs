@@ -13,7 +13,7 @@ const PANEL_W: i64 = 5;
 const PANEL_H: i64 = 3;
 
 #[billboard::main]
-fn main() {
+fn main() -> ExitCode {
     log("demo: assembling panel");
 
     // The panel glides up into place, one column slightly after another.
@@ -97,6 +97,7 @@ fn main() {
     }
     sleep(Ticks::from_secs(1.0));
 
-    // main returning ends the animation: every remaining entity (panel, lamp)
-    // is despawned by RAII and the host cleans up whatever is left.
+    // Returning ends the animation; `End` tells the host to clear everything
+    // (every remaining entity — panel, lamp — plus any leaked entities).
+    ExitCode::End
 }
