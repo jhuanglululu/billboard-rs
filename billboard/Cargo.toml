@@ -1,0 +1,7 @@
+[package]
+name = "billboard"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+billboard-macros = { path = "../billboard-macros" }
