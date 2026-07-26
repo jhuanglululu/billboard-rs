@@ -13,9 +13,18 @@ pub fn init() {
     {
         std::panic::set_hook(Box::new(|info| {
             let msg = info.to_string();
-            unsafe { crate::abi::fail(msg.as_ptr(), msg.len()) }
+            crate::abi::marshal::fail(&msg)
         }));
     }
+}
+
+/// Emitted by `#[billboard::main(random_seed = N)]`, right after [`init`]:
+/// reseed the host's deterministic stream and route
+/// [`default_random`](crate::random::default_random) to it. Runs before the
+/// user's `main` and before any task exists, so the routing flag is immutable
+/// from then on and every forked task inherits the same answer.
+pub fn seed_random(seed: i64) {
+    crate::random::init_seeded(seed);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -28,17 +37,24 @@ mod host_alloc {
 
     unsafe impl GlobalAlloc for HostAlloc {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            unsafe { crate::abi::realloc(core::ptr::null_mut(), 0, layout.align(), layout.size()) }
+            unsafe {
+                crate::abi::marshal::realloc(
+                    core::ptr::null_mut(),
+                    0,
+                    layout.align(),
+                    layout.size(),
+                )
+            }
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
             unsafe {
-                crate::abi::realloc(ptr, layout.size(), layout.align(), 0);
+                crate::abi::marshal::realloc(ptr, layout.size(), layout.align(), 0);
             }
         }
 
         unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-            unsafe { crate::abi::realloc(ptr, layout.size(), layout.align(), new_size) }
+            unsafe { crate::abi::marshal::realloc(ptr, layout.size(), layout.align(), new_size) }
         }
     }
 

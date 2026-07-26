@@ -8,7 +8,23 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, 
 /// and read it back with [`Ticks::count`]. Arithmetic overflow/underflow
 /// panics (which kills the animation) rather than wrapping or clamping — a
 /// duration that under/overflows is a bug, not something to hide.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+///
+/// `repr(transparent)` + `Pod`: a duration is one `u64`, so it can cross a
+/// [`channel`](crate::sync::channel) on its own or inside a payload struct.
+#[repr(transparent)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    bytemuck::Pod,
+    bytemuck::Zeroable,
+)]
 pub struct Ticks(u64);
 
 impl Ticks {

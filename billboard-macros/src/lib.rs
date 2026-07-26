@@ -16,9 +16,26 @@ use syn::{Ident, ItemFn, Token, braced, parenthesized, parse_macro_input};
 /// export, so the plugin can refuse modules built against a different ABI
 /// before running them.
 ///
+/// # `random_seed`
+///
+/// ```ignore
+/// #[billboard::main(random_seed = 20260726)]
+/// fn main() -> ExitCode { … }
+/// ```
+///
+/// Reseeds the host's deterministic random stream with that literal and makes
+/// `default_random()` draw from it, so the animation plays out identically
+/// every run. Without it, `default_random()` is non-deterministic. The reseed
+/// happens during init, *before* `main`, so the very first draw is already
+/// seeded.
+///
 /// [`ExitCode`]: ../billboard/enum.ExitCode.html
 #[proc_macro_attribute]
-pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = match syn::parse::<MainArgs>(attr) {
+        Ok(args) => args,
+        Err(e) => return e.to_compile_error().into(),
+    };
     let func = parse_macro_input!(item as ItemFn);
     let name = &func.sig.ident;
     if !func.sig.inputs.is_empty() || func.sig.asyncness.is_some() {
@@ -29,12 +46,23 @@ pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
         .to_compile_error()
         .into();
     }
+    // Seeding is part of init, so it runs before the user's first line and
+    // before any task is spawned — the routing flag is then immutable, and a
+    // fork just copies an already-correct value.
+    let seed = args.random_seed.map(|seed| {
+        // Emitted through proc_macro2's own literal, which renders i64::MIN as
+        // `-9223372036854775808i64` — a form rustc accepts, unlike a negation
+        // applied to a literal that has already overflowed.
+        let seed = proc_macro2::Literal::i64_suffixed(seed);
+        quote! { ::billboard::__rt::seed_random(#seed); }
+    });
     quote! {
         #func
 
         #[unsafe(no_mangle)]
         pub extern "C" fn _billboard_main() -> i32 {
             ::billboard::__rt::init();
+            #seed
             // Bind the result to `ExitCode` so a wrong return type fails here
             // with a clear "expected ExitCode" mismatch rather than deep in
             // the conversion.
@@ -50,8 +78,86 @@ pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
     .into()
 }
 
+/// The arguments `#[billboard::main]` accepts. One so far, `random_seed = N`;
+/// parsed as a name/value list so adding another stays backwards-compatible.
+struct MainArgs {
+    /// The seed to hand to `seed_random`.
+    random_seed: Option<i64>,
+}
+
+impl Parse for MainArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut args = MainArgs { random_seed: None };
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+            match key.to_string().as_str() {
+                "random_seed" => {
+                    if args.random_seed.is_some() {
+                        return Err(syn::Error::new(key.span(), "duplicate `random_seed`"));
+                    }
+                    args.random_seed = Some(parse_seed(input)?);
+                }
+                other => {
+                    return Err(syn::Error::new(
+                        key.span(),
+                        format!(
+                            "unknown `#[billboard::main]` argument `{other}`; expected `random_seed`"
+                        ),
+                    ));
+                }
+            }
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
+        }
+        Ok(args)
+    }
+}
+
+/// Parse `random_seed`'s value: an integer literal, optionally negated.
+///
+/// The magnitude is read as `i128` and the sign applied *before* the range
+/// check, because `i64::MIN`'s magnitude (9223372036854775808) does not fit in
+/// an `i64` on its own — parsing it as one first rejected a perfectly good seed.
+fn parse_seed(input: ParseStream) -> syn::Result<i64> {
+    let negative = if input.peek(Token![-]) {
+        input.parse::<Token![-]>()?;
+        true
+    } else {
+        false
+    };
+    let lit: syn::LitInt = input.parse()?;
+    let magnitude = lit
+        .base10_parse::<i128>()
+        .map_err(|_| syn::Error::new_spanned(&lit, "`random_seed` must be an integer literal"))?;
+    let value = if negative { -magnitude } else { magnitude };
+    i64::try_from(value).map_err(|_| {
+        syn::Error::new_spanned(
+            &lit,
+            format!(
+                "`random_seed` must fit in i64 ({} to {}), got {value}",
+                i64::MIN,
+                i64::MAX
+            ),
+        )
+    })
+}
+
 /// Generates the SDK's vector math types: structs, constructors, constants,
 /// physics-typed operators, scalar scaling, and explicit `From` conversions.
+///
+/// # Internal to the SDK: the invoking crate must depend on `bytemuck`
+///
+/// The generated types derive `bytemuck::Pod`/`Zeroable`, so a vector can cross
+/// a channel — and those derives expand to absolute `::bytemuck::…` paths. Any
+/// crate invoking this macro therefore needs `bytemuck` in its own dependencies,
+/// which is why this stays internal to the SDK's math module (the `billboard`
+/// crate has it) rather than being part of the animation-facing API.
+///
+/// An animation wanting its own `Pod` struct should use `billboard::payload!`
+/// instead: it routes the same derives through the SDK's re-export of bytemuck,
+/// so it needs no dependency of its own.
 ///
 /// ```ignore
 /// vectors! {
@@ -192,7 +298,14 @@ impl VectorDefs {
             let one = lit_one(elem);
             out.extend(quote! {
                 #(#doc)*
-                #[derive(Clone, Copy, Debug, Default, PartialEq)]
+                // repr(C) + Pod: three same-typed scalars, so no padding and
+                // every bit pattern is valid — which is what lets a vector be
+                // a channel payload, on its own or inside a user struct.
+                #[repr(C)]
+                #[derive(
+                    Clone, Copy, Debug, Default, PartialEq,
+                    ::bytemuck::Pod, ::bytemuck::Zeroable,
+                )]
                 pub struct #name {
                     pub x: #elem,
                     pub y: #elem,
@@ -383,5 +496,69 @@ fn lit_one(elem: &Ident) -> proc_macro2::TokenStream {
     } else {
         let lit = syn::LitInt::new(&format!("1{elem}"), Span::call_site());
         quote!(#lit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MainArgs;
+
+    fn seed_of(args: &str) -> syn::Result<Option<i64>> {
+        syn::parse_str::<MainArgs>(args).map(|a| a.random_seed)
+    }
+
+    #[test]
+    fn no_arguments_means_no_seeding() {
+        assert_eq!(seed_of("").expect("empty args parse"), None);
+    }
+
+    #[test]
+    fn positive_and_negative_seeds() {
+        assert_eq!(seed_of("random_seed = 20260726").unwrap(), Some(20_260_726));
+        assert_eq!(seed_of("random_seed = -7").unwrap(), Some(-7));
+        assert_eq!(seed_of("random_seed = 0").unwrap(), Some(0));
+        // Underscores and suffixes are the literal's business, not ours.
+        assert_eq!(
+            seed_of("random_seed = 20_260_726").unwrap(),
+            Some(20_260_726)
+        );
+        assert_eq!(seed_of("random_seed = 5i64").unwrap(), Some(5));
+        // Hex literals parse too.
+        assert_eq!(seed_of("random_seed = 0xFF").unwrap(), Some(255));
+    }
+
+    /// Regression: `i64::MIN`'s magnitude (9223372036854775808) does not fit in
+    /// an `i64`, so parsing the magnitude as `i64` before applying the sign
+    /// rejected a seed that is perfectly representable.
+    #[test]
+    fn the_most_negative_seed_is_accepted() {
+        assert_eq!(
+            seed_of("random_seed = -9223372036854775808").unwrap(),
+            Some(i64::MIN)
+        );
+        // And its positive neighbour, the other boundary.
+        assert_eq!(
+            seed_of("random_seed = 9223372036854775807").unwrap(),
+            Some(i64::MAX)
+        );
+    }
+
+    #[test]
+    fn seeds_outside_i64_are_rejected_with_the_range_in_the_message() {
+        let too_big = seed_of("random_seed = 9223372036854775808").expect_err("must reject");
+        assert!(
+            too_big.to_string().contains("must fit in i64"),
+            "unhelpful message: {too_big}"
+        );
+        let too_small = seed_of("random_seed = -9223372036854775809").expect_err("must reject");
+        assert!(too_small.to_string().contains("must fit in i64"));
+    }
+
+    #[test]
+    fn unknown_arguments_and_duplicates_are_rejected() {
+        let unknown = seed_of("random_tomato = 1").expect_err("must reject");
+        assert!(unknown.to_string().contains("random_seed"), "{unknown}");
+        let dup = seed_of("random_seed = 1, random_seed = 2").expect_err("must reject");
+        assert!(dup.to_string().contains("duplicate"), "{dup}");
     }
 }

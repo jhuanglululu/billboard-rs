@@ -1,12 +1,16 @@
 //! [`Rotation`]: an orientation stored as a unit quaternion.
 
 use super::angle::Radians;
-use super::vectors::Vector3d;
+use super::vectors::{Offset, Vector3d};
 
 /// An orientation, stored as a quaternion. Build one with
 /// [`Rotation::axis_angle`] or [`Rotation::euler`]; compose with `*`
 /// (right-hand side applies first).
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// `repr(C)` + `Pod`, like the vector family: four `f64`s with no padding, so
+/// a rotation can cross a [`channel`](crate::sync::channel).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Rotation {
     pub x: f64,
     pub y: f64,
@@ -35,6 +39,101 @@ impl Rotation {
             z: axis.z / len * s,
             w: c,
         }
+    }
+
+    /// Apply this rotation to a vector: `q · v · q⁻¹`, in the branch-free form
+    /// `v + 2·(q_xyz × (q_xyz × v + w·v))`.
+    ///
+    /// This is what composes a [`Group`](crate::helpers::Group)'s transform onto
+    /// its members' local offsets, and how you point something along a
+    /// direction you rotated.
+    pub fn rotate(self, v: Vector3d) -> Vector3d {
+        let q = Vector3d::new(self.x, self.y, self.z);
+        let t = q.cross(v) + v * self.w;
+        v + q.cross(t) * 2.0
+    }
+
+    /// Apply this rotation to a displacement — the same maths as
+    /// [`rotate`](Rotation::rotate), keeping the [`Offset`] type.
+    pub fn rotate_offset(self, v: Offset) -> Offset {
+        Offset::from(self.rotate(Vector3d::from(v)))
+    }
+
+    /// The inverse rotation (the conjugate — these are unit quaternions).
+    pub fn inverse(self) -> Rotation {
+        Rotation {
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+            w: self.w,
+        }
+    }
+
+    /// The dot product of the two quaternions as 4-vectors. Its sign says
+    /// whether they are on the same hemisphere, which is what interpolation
+    /// needs to take the short way round.
+    pub fn dot(self, r: Rotation) -> f64 {
+        self.x * r.x + self.y * r.y + self.z * r.z + self.w * r.w
+    }
+
+    /// Normalize to a unit quaternion. A zero quaternion has no orientation, so
+    /// it kills the animation rather than returning NaN.
+    pub fn normalize(self) -> Rotation {
+        let len = self.dot(self).sqrt();
+        assert!(len > 0.0, "cannot normalize a zero quaternion");
+        Rotation {
+            x: self.x / len,
+            y: self.y / len,
+            z: self.z / len,
+            w: self.w / len,
+        }
+    }
+
+    /// Interpolate towards `other`, `t` clamped to `0..=1`: componentwise lerp
+    /// then renormalize (*nlerp*), taking the shorter arc.
+    ///
+    /// Not `slerp`: nlerp follows the same path and differs only in how angular
+    /// speed is distributed along it. For animation sub-steps — always small —
+    /// the difference is invisible, and nlerp needs no trigonometry.
+    ///
+    /// Use [`lerp_unclamped`](Rotation::lerp_unclamped) when `t` may legitimately
+    /// leave `0..=1`, as it does under an overshooting ease.
+    pub fn lerp(self, other: Rotation, t: f64) -> Rotation {
+        assert!(t.is_finite(), "Rotation::lerp called with a non-finite t");
+        self.lerp_unclamped(other, t.clamp(0.0, 1.0))
+    }
+
+    /// [`lerp`](Rotation::lerp) without the clamp: a `t` outside `0..=1`
+    /// extrapolates, continuing along the same arc past either end.
+    ///
+    /// This is what an overshooting ease needs. `Ease::BackOut` and the elastic
+    /// curves deliberately leave `0..=1`, and a rotation that clamped while the
+    /// position kept flying would arrive already parked at its target — the
+    /// spring visible in the movement and missing from the turn.
+    pub fn lerp_unclamped(self, other: Rotation, t: f64) -> Rotation {
+        assert!(
+            t.is_finite(),
+            "Rotation::lerp_unclamped called with a non-finite t"
+        );
+        // Flip one end if they are on opposite hemispheres, so the blend goes
+        // the short way around instead of the long way.
+        let other = if self.dot(other) < 0.0 {
+            Rotation {
+                x: -other.x,
+                y: -other.y,
+                z: -other.z,
+                w: -other.w,
+            }
+        } else {
+            other
+        };
+        Rotation {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t,
+            z: self.z + (other.z - self.z) * t,
+            w: self.w + (other.w - self.w) * t,
+        }
+        .normalize()
     }
 
     /// Yaw (around +Y), then pitch (around +X), then roll (around +Z).

@@ -2,6 +2,14 @@
 name = "billboard"
 version.workspace = true
 edition.workspace = true
+# Copies the registry source ($BILLBOARD_REGISTRY, else the bundled snapshot)
+# into OUT_DIR for `billboard::registry` to `include!`.
+build = "build.rs"
 
 [dependencies]
 billboard-macros = { path = "../billboard-macros" }
+# The channel payload guard: `Pod` is what makes "these bytes mean the same
+# thing in another task's memory" a compile-time property, and it is what the
+# math types derive so they can cross a channel. Re-exported from the prelude
+# so animations never depend on bytemuck directly.
+bytemuck = { version = "1", features = ["derive"] }

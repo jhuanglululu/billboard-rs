@@ -6,15 +6,18 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 /// An angle in degrees. Converts explicitly to/from [`Radians`].
 ///
 /// The value is private: build one with [`Degrees::new`] / `Degrees::from(f64)`
-/// and read it with [`Degrees::value`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+/// and read it with [`Degrees::value`]. `repr(transparent)` + `Pod`, so an
+/// angle can cross a [`channel`](crate::sync::channel).
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Degrees(f64);
 
 /// An angle in radians. Converts explicitly to/from [`Degrees`].
 ///
 /// The value is private: build one with [`Radians::new`] / `Radians::from(f64)`
-/// and read it with [`Radians::value`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
+/// and read it with [`Radians::value`]. `repr(transparent)` + `Pod`.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Radians(f64);
 
 impl Degrees {
