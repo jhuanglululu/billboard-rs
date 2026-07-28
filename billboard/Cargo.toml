@@ -8,8 +8,18 @@ build = "build.rs"
 
 [dependencies]
 billboard-macros = { path = "../billboard-macros" }
+# The guest core: tasks, sync, randomness, math, the panic hook and the host
+# allocator. Shared with any other plugin built on the same engine, and the
+# other half of a wire ABI this crate must move in lockstep with — hence the
+# path dependency on its sibling family folder rather than a version.
+wasmachine = { path = "../../../WASMachine/wasmachine-rs/wasmachine" }
+# `#[billboard::main]` expands into `wasmachine-macros`' entry-point machinery,
+# re-exported from this crate so the generated attribute resolves in the
+# animation's own crate.
+wasmachine-macros = { path = "../../../WASMachine/wasmachine-rs/wasmachine-macros" }
 # The channel payload guard: `Pod` is what makes "these bytes mean the same
-# thing in another task's memory" a compile-time property, and it is what the
-# math types derive so they can cross a channel. Re-exported from the prelude
-# so animations never depend on bytemuck directly.
+# thing in another task's memory" a compile-time property, and it is what
+# `Color` derives so it can cross a channel (the core's math types derive it
+# over in `wasmachine`). Re-exported from the prelude, and by `payload!`, so
+# animations never depend on bytemuck directly.
 bytemuck = { version = "1", features = ["derive"] }

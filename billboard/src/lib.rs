@@ -2,8 +2,9 @@
 //!
 //! Write a Minecraft animation as a plain Rust program, compile it to
 //! `wasm32-unknown-unknown`, drop it in the Billboard plugin's animations
-//! folder. Everything is safe Rust: no raw pointers, no extern calls —
-//! the ABI lives entirely inside this crate.
+//! folder. Everything is safe Rust: no raw pointers, no extern calls — the ABI
+//! lives inside this crate's `abi` module and inside the `wasmachine` core it
+//! is built on, and nowhere else.
 //!
 //! ```ignore
 //! use billboard::prelude::*;
@@ -22,15 +23,16 @@ pub mod effects;
 pub mod entity;
 mod exit;
 pub mod helpers;
-pub mod math;
-pub mod random;
 pub mod registry;
-pub mod sync;
-mod task;
+
+// The generic guest core — tasks, sync, randomness, math, the panic hook and
+// the host allocator — lives in `wasmachine`, shared with any other plugin
+// built on the same engine. Re-exported here so animation code sees one SDK:
+// `billboard::math::Position`, `billboard::sync::Signal`, and so on.
+pub use wasmachine::{math, random, sync};
 
 #[doc(hidden)]
-#[path = "rt.rs"]
-pub mod __rt;
+pub use wasmachine::__rt;
 
 /// Bumped whenever the guest ABI changes; `#[billboard::main]` exports it so
 /// the plugin can refuse mismatched modules before running them.
@@ -42,7 +44,13 @@ pub const ABI_VERSION: i32 = 2;
 
 pub use billboard_macros::main;
 pub use exit::ExitCode;
-pub use task::{Task, sleep, spawn};
+pub use wasmachine::{Task, log, sleep, spawn};
+
+/// The entry-point machinery `#[billboard::main]` expands into, re-exported so
+/// the generated attribute resolves inside an animation's own crate (which
+/// depends on `billboard` alone). Not for animations to name.
+#[doc(hidden)]
+pub use wasmachine_macros::sdk_main as __sdk_main;
 
 /// The `bytemuck` crate this SDK is built against, re-exported so an animation
 /// can derive [`Pod`](bytemuck::Pod) without depending on bytemuck itself.
@@ -118,11 +126,6 @@ macro_rules! payload {
             $($(#[$field_meta])* $field_vis $field : $ty),*
         }
     };
-}
-
-/// Write a debug message to the server console.
-pub fn log(msg: &str) {
-    abi::marshal::log(msg);
 }
 
 pub mod prelude {

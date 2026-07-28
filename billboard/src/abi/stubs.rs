@@ -1,29 +1,10 @@
-//! Host-target stubs so the SDK's math/state logic is unit-testable with
+//! Host-target stubs so the SDK's entity/state logic is unit-testable with
 //! plain `cargo test`. Anything that would actually cross the boundary
-//! panics. Compiled only for non-wasm targets.
+//! panics. Compiled only for non-wasm targets. The engine-owned imports have
+//! their own stubs in `wasmachine`.
 
-// realloc/fail are referenced only from wasm-gated code (allocator, panic
-// hook), so they're dead on the host target by design.
-#![allow(dead_code, clippy::missing_safety_doc)]
+#![allow(clippy::missing_safety_doc)]
 
-pub unsafe fn realloc(_: *mut u8, _: usize, _: usize, _: usize) -> *mut u8 {
-    unreachable!("billboard ABI called outside wasm")
-}
-pub unsafe fn fork() -> i32 {
-    unimplemented!("billboard ABI: fork is wasm-only")
-}
-pub unsafe fn join(_: i32) {
-    unimplemented!("billboard ABI: join is wasm-only")
-}
-pub unsafe fn kill(_: i32) {
-    unimplemented!("billboard ABI: kill is wasm-only")
-}
-pub unsafe fn exit() -> ! {
-    unimplemented!("billboard ABI: exit is wasm-only")
-}
-pub unsafe fn sleep(_: i64) {
-    unimplemented!("billboard ABI: sleep is wasm-only")
-}
 pub unsafe fn spawn_block_display(_: *const u8, _: usize, _: f64, _: f64, _: f64) -> i32 {
     unimplemented!("billboard ABI: spawn is wasm-only")
 }
@@ -60,69 +41,6 @@ pub unsafe fn despawn(_: i32) {
 pub unsafe fn is_alive(_: i32) -> i32 {
     unimplemented!("billboard ABI: is_alive is wasm-only")
 }
-pub unsafe fn log(_: *const u8, _: usize) {
-    unimplemented!("billboard ABI: log is wasm-only")
-}
-pub unsafe fn fail(_: *const u8, _: usize) -> ! {
-    panic!("billboard ABI: fail called outside wasm")
-}
-
-// --- ABI v2: sync primitives. ---
-pub unsafe fn signal_new() -> i32 {
-    unimplemented!("billboard ABI: signal_new is wasm-only")
-}
-pub unsafe fn signal_notify(_: i32, _: i32) {
-    unimplemented!("billboard ABI: signal_notify is wasm-only")
-}
-pub unsafe fn barrier_new(_: i32) -> i32 {
-    unimplemented!("billboard ABI: barrier_new is wasm-only")
-}
-pub unsafe fn wait_all(_: i32, _: i32) -> i32 {
-    unimplemented!("billboard ABI: wait_all is wasm-only")
-}
-pub unsafe fn wait_any(_: i32, _: i32) -> i32 {
-    unimplemented!("billboard ABI: wait_any is wasm-only")
-}
-pub unsafe fn wait(_: i32) {
-    unimplemented!("billboard ABI: wait is wasm-only")
-}
-pub unsafe fn channel_new(_: i32) -> i32 {
-    unimplemented!("billboard ABI: channel_new is wasm-only")
-}
-pub unsafe fn channel_send(_: i32, _: *const u8, _: usize) {
-    unimplemented!("billboard ABI: channel_send is wasm-only")
-}
-pub unsafe fn channel_recv_len(_: i32) -> i32 {
-    unimplemented!("billboard ABI: channel_recv_len is wasm-only")
-}
-pub unsafe fn channel_recv(_: i32, _: *mut u8) {
-    unimplemented!("billboard ABI: channel_recv is wasm-only")
-}
-pub unsafe fn channel_peek_len(_: i32) -> i32 {
-    unimplemented!("billboard ABI: channel_peek_len is wasm-only")
-}
-pub unsafe fn channel_peek(_: i32, _: *mut u8) {
-    unimplemented!("billboard ABI: channel_peek is wasm-only")
-}
-pub unsafe fn channel_try_len(_: i32) -> i32 {
-    unimplemented!("billboard ABI: channel_try_len is wasm-only")
-}
-pub unsafe fn channel_clear(_: i32) {
-    unimplemented!("billboard ABI: channel_clear is wasm-only")
-}
-
-// --- ABI v2: randomness. `SplitRng` is pure guest Rust and needs none of
-// these, so the pure random logic stays testable on the host. ---
-pub unsafe fn random_nondet() -> i64 {
-    unimplemented!("billboard ABI: random_nondet is wasm-only")
-}
-pub unsafe fn random_det() -> i64 {
-    unimplemented!("billboard ABI: random_det is wasm-only")
-}
-pub unsafe fn seed_random(_: i64) {
-    unimplemented!("billboard ABI: seed_random is wasm-only")
-}
-
 // --- ABI v2: new entity kinds. ---
 pub unsafe fn spawn_item_display(_: *const u8, _: usize, _: f64, _: f64, _: f64) -> i32 {
     unimplemented!("billboard ABI: spawn_item_display is wasm-only")
