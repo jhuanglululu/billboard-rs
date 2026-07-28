@@ -11,6 +11,11 @@
 
 use core::f64::consts::PI;
 
+// The sine and elastic curves are the only transcendentals in the set, and they
+// run once per sub-step of every eased tween — exactly the shape the kernel
+// exists for. See `color.rs`.
+use crate::math::{cos, pow, sin};
+
 /// A named easing curve. [`apply`](Ease::apply) evaluates it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Ease {
@@ -91,9 +96,9 @@ impl Ease {
                 }
             }
 
-            Ease::SineIn => 1.0 - (t * PI / 2.0).cos(),
-            Ease::SineOut => (t * PI / 2.0).sin(),
-            Ease::SineInOut => -((PI * t).cos() - 1.0) / 2.0,
+            Ease::SineIn => 1.0 - cos(t * PI / 2.0),
+            Ease::SineOut => sin(t * PI / 2.0),
+            Ease::SineInOut => -(cos(PI * t) - 1.0) / 2.0,
 
             Ease::BackIn => C3 * t * t * t - C1 * t * t,
             Ease::BackOut => {
@@ -114,23 +119,23 @@ impl Ease {
                 if t == 0.0 || t == 1.0 {
                     t
                 } else {
-                    -(2.0f64.powf(10.0 * t - 10.0)) * ((t * 10.0 - 10.75) * E1).sin()
+                    -pow(2.0, 10.0 * t - 10.0) * sin((t * 10.0 - 10.75) * E1)
                 }
             }
             Ease::ElasticOut => {
                 if t == 0.0 || t == 1.0 {
                     t
                 } else {
-                    2.0f64.powf(-10.0 * t) * ((t * 10.0 - 0.75) * E1).sin() + 1.0
+                    pow(2.0, -10.0 * t) * sin((t * 10.0 - 0.75) * E1) + 1.0
                 }
             }
             Ease::ElasticInOut => {
                 if t == 0.0 || t == 1.0 {
                     t
                 } else if t < 0.5 {
-                    -(2.0f64.powf(20.0 * t - 10.0) * ((20.0 * t - 11.125) * E2).sin()) / 2.0
+                    -(pow(2.0, 20.0 * t - 10.0) * sin((20.0 * t - 11.125) * E2)) / 2.0
                 } else {
-                    2.0f64.powf(-20.0 * t + 10.0) * ((20.0 * t - 11.125) * E2).sin() / 2.0 + 1.0
+                    pow(2.0, -20.0 * t + 10.0) * sin((20.0 * t - 11.125) * E2) / 2.0 + 1.0
                 }
             }
 

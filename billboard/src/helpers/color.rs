@@ -3,6 +3,12 @@
 
 use bytemuck::{Pod, Zeroable};
 
+// Through the engine's math kernel, not `f64`'s own methods: on wasm those
+// compile a software cube root and power into every animation, at ~500–1000
+// interpreted instructions a call. Rounding and `clamp` stay native — they are
+// single wasm opcodes.
+use crate::math::{cbrt, pow};
+
 /// An 8-bit sRGB colour with alpha. Plain data (`Pod`), so it crosses channels
 /// and sits inside other payload structs.
 ///
@@ -91,7 +97,7 @@ impl Color {
         let l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
         let m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b;
         let s = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b;
-        let (l, m, s) = (l.cbrt(), m.cbrt(), s.cbrt());
+        let (l, m, s) = (cbrt(l), cbrt(m), cbrt(s));
         Oklab {
             l: 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
             a: 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
@@ -146,7 +152,7 @@ fn srgb_to_linear(c: u8) -> f64 {
     if c <= 0.04045 {
         c / 12.92
     } else {
-        ((c + 0.055) / 1.055).powf(2.4)
+        pow((c + 0.055) / 1.055, 2.4)
     }
 }
 
@@ -155,7 +161,7 @@ fn linear_to_srgb(c: f64) -> u8 {
     let c = if c <= 0.0031308 {
         c * 12.92
     } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
+        1.055 * pow(c, 1.0 / 2.4) - 0.055
     };
     round_u8(c.clamp(0.0, 1.0) * 255.0)
 }

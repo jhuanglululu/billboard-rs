@@ -1,6 +1,7 @@
 //! What `#[billboard::main]` generates, checked by compiling it and calling
-//! the exports it emits. `_billboard_main` here is the real generated export —
-//! the same one the plugin calls.
+//! the exports it emits — the real generated exports, the same ones the host
+//! looks up: the engine's `_engine_main`/`_engine_abi` and Billboard's own
+//! `_billboard_abi`.
 
 use billboard::prelude::*;
 use billboard::random::{DefaultRng, default_random};
@@ -17,10 +18,22 @@ fn animation() -> ExitCode {
 }
 
 #[test]
-fn abi_handshake_export_reports_version_two() {
-    assert_eq!(_billboard_abi(), 2);
+fn the_plugin_handshake_export_reports_version_three() {
+    assert_eq!(_billboard_abi(), 3);
     // One source of truth: the macro exports the crate's constant.
-    assert_eq!(billboard::ABI_VERSION, 2);
+    assert_eq!(billboard::ABI_VERSION, 3);
+}
+
+/// Beside Billboard's handshake sits the engine's, emitted by the same
+/// attribute and identical in every guest whatever plugin it serves — that is
+/// what lets the host check the engine ABI before it knows the plugin.
+#[test]
+fn the_engine_handshake_export_sits_beside_it() {
+    assert_eq!(_engine_abi(), 1);
+    assert_eq!(_engine_abi(), billboard::ENGINE_ABI_VERSION);
+    // The two version spaces are independent, and this file proves they are
+    // not accidentally the same number.
+    assert_ne!(_engine_abi(), _billboard_abi());
 }
 
 /// The seeding hook the macro emits: it must reach the host's `seed_random`

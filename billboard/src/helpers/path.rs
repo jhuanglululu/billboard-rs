@@ -8,7 +8,8 @@
 //! is what you want for expressive motion and not what you want for constant
 //! speed.
 
-use crate::math::{Degrees, Offset, Position, Radians, Vector3d};
+// Kernel sine/cosine rather than `f64::sin`/`f64::cos`: see `color.rs`.
+use crate::math::{Degrees, Offset, Position, Radians, Vector3d, cos, sin};
 
 /// A curve through space.
 ///
@@ -167,7 +168,7 @@ impl Path {
             Path::Line { from, to } => to - from,
             Path::Circle { center: _, u, v } => {
                 let theta = core::f64::consts::TAU * t;
-                (v * theta.cos() - u * theta.sin()) * core::f64::consts::TAU
+                (v * cos(theta) - u * sin(theta)) * core::f64::consts::TAU
             }
             Path::Arc {
                 center: _,
@@ -178,7 +179,7 @@ impl Path {
             } => {
                 let sweep = end.value() - start.value();
                 let theta = start.value() + sweep * t;
-                (v * theta.cos() - u * theta.sin()) * sweep
+                (v * cos(theta) - u * sin(theta)) * sweep
             }
             Path::CubicBezier { p0, p1, p2, p3 } => {
                 // d/dt = 3(1-t)²(p1-p0) + 6(1-t)t(p2-p1) + 3t²(p3-p2)
@@ -190,7 +191,7 @@ impl Path {
 }
 
 fn on_circle(center: Position, u: Offset, v: Offset, theta: f64) -> Position {
-    center + u * theta.cos() + v * theta.sin()
+    center + u * cos(theta) + v * sin(theta)
 }
 
 /// Two perpendicular in-plane offsets of length `radius` for the plane whose

@@ -13,11 +13,15 @@ use quote::quote;
 
 /// Marks the animation entry point.
 ///
-/// Requires `fn main() -> ExitCode`. Emits the `_billboard_main` wasm export
-/// (runtime init + the user's fn as task 0, whose returned [`ExitCode`]
-/// crosses the ABI as an `i32`) and the `_billboard_abi` version-handshake
-/// export, so the plugin can refuse modules built against a different ABI
-/// before running them.
+/// Requires `fn main() -> ExitCode`. Emits three wasm exports: the engine's
+/// entry point `_engine_main` (runtime init + the user's fn as task 0, whose
+/// returned [`ExitCode`] crosses the ABI as an `i32`), the engine handshake
+/// `_engine_abi`, and Billboard's own handshake `_billboard_abi` — so the
+/// plugin can refuse modules built against a different ABI before running them,
+/// and the engine can do the same without knowing which plugin a module serves.
+///
+/// The first two names are the engine's and are the same in every guest; only
+/// the third is Billboard's to choose.
 ///
 /// # `random_seed`
 ///
@@ -44,7 +48,6 @@ pub fn main(attr: TokenStream, item: TokenStream) -> TokenStream {
             config(
                 sdk = ::billboard,
                 attribute = "#[billboard::main]",
-                main_export = _billboard_main,
                 abi_export = _billboard_abi,
             ),
             #args

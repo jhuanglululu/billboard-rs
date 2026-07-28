@@ -34,13 +34,24 @@ pub use wasmachine::{math, random, sync};
 #[doc(hidden)]
 pub use wasmachine::__rt;
 
-/// Bumped whenever the guest ABI changes; `#[billboard::main]` exports it so
-/// the plugin can refuse mismatched modules before running them.
+/// Bumped whenever Billboard's half of the guest ABI changes;
+/// `#[billboard::main]` exports it as `_billboard_abi` so the plugin can refuse
+/// mismatched modules before running them.
 ///
 /// Version 2 added the new entity kinds, sound and particles, the sync
-/// primitives and the random streams — all additive, so the host accepts 1
-/// and 2.
-pub const ABI_VERSION: i32 = 2;
+/// primitives and the random streams — all additive, so the host accepted 1
+/// and 2. Version 3 is the namespace split: the engine's imports (memory,
+/// tasks, sync, random, math) moved to module `"engine"` and the entry point
+/// became `_engine_main`, leaving module `"billboard"` to the entity and effect
+/// imports alone. Nothing in this module's own list changed — but a v2 guest
+/// asks the host for engine functions under the plugin's name, so the two
+/// cannot be mixed.
+pub const ABI_VERSION: i32 = 3;
+
+/// The engine ABI the SDK is built against, re-exported so
+/// `#[billboard::main]`'s generated `_engine_abi` export can reach it through
+/// this crate — an animation depends on `billboard`, never on `wasmachine`.
+pub use wasmachine::ENGINE_ABI_VERSION;
 
 pub use billboard_macros::main;
 pub use exit::ExitCode;
