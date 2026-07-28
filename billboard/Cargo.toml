@@ -12,11 +12,11 @@ billboard-macros = { path = "../billboard-macros" }
 # allocator. Shared with any other plugin built on the same engine, and the
 # other half of a wire ABI this crate must move in lockstep with — hence the
 # path dependency on its sibling family folder rather than a version.
-wasmachine = { path = "../../../WASMachine/wasmachine-rs/wasmachine" }
+wasmachine = { git = "https://github.com/jhuanglululu/wasmachine-rs" }
 # `#[billboard::main]` expands into `wasmachine-macros`' entry-point machinery,
 # re-exported from this crate so the generated attribute resolves in the
 # animation's own crate.
-wasmachine-macros = { path = "../../../WASMachine/wasmachine-rs/wasmachine-macros" }
+wasmachine-macros = { git = "https://github.com/jhuanglululu/wasmachine-rs" }
 # The channel payload guard: `Pod` is what makes "these bytes mean the same
 # thing in another task's memory" a compile-time property, and it is what
 # `Color` derives so it can cross a channel (the core's math types derive it
