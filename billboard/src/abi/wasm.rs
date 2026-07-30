@@ -2,10 +2,9 @@
 //! `"billboard"`. Compiled only for `wasm32`; see the parent module for the
 //! contract.
 //!
-//! The engine's imports (memory, tasks, sync, random, log/fail) come from the
-//! same module name for now — `wasmachine`'s ABI layer declares those. The
-//! namespace split (engine imports under module `"engine"`) is its own
-//! coordinated ABI bump, host and guest together.
+//! The engine's imports (memory, tasks, sync, random, log/fail) live in their
+//! own module `"engine"` since ABI 3 — `wasmachine`'s ABI layer declares those;
+//! this file only declares the Billboard-owned surface.
 
 #[link(wasm_import_module = "billboard")]
 unsafe extern "C" {

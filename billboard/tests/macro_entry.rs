@@ -40,7 +40,7 @@ fn the_engine_handshake_export_sits_beside_it() {
 /// import *and* flip `default_random()` over to the deterministic stream.
 ///
 /// This calls the hook directly rather than through the generated
-/// `_billboard_main`, because that export is `extern "C"` — the stub's panic
+/// `_engine_main`, because that export is `extern "C"` — the stub's panic
 /// inside it aborts instead of unwinding, so it can't be observed from a test.
 /// That the *macro* emits this call, before the animation body, is what the
 /// Phase-3 wasm integration test covers; that the attribute parses and expands

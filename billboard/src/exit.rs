@@ -35,7 +35,7 @@ mod tests {
 
     #[test]
     fn wire_values() {
-        // The plugin's `_billboard_main` return contract: End=0, Keep=1,
+        // The `_engine_main` return contract the plugin reads: End=0, Keep=1,
         // Repeat=2. Values written out by hand, not derived from the enum.
         assert_eq!(ExitCode::End.as_i32(), 0);
         assert_eq!(ExitCode::Keep.as_i32(), 1);

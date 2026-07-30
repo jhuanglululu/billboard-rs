@@ -10,8 +10,8 @@ build = "build.rs"
 billboard-macros = { path = "../billboard-macros" }
 # The guest core: tasks, sync, randomness, math, the panic hook and the host
 # allocator. Shared with any other plugin built on the same engine, and the
-# other half of a wire ABI this crate must move in lockstep with — hence the
-# path dependency on its sibling family folder rather than a version.
+# other half of a wire ABI this crate must move in lockstep with — hence a git
+# dependency tracking the repo head rather than a published version.
 wasmachine = { git = "https://github.com/jhuanglululu/wasmachine-rs" }
 # `#[billboard::main]` expands into `wasmachine-macros`' entry-point machinery,
 # re-exported from this crate so the generated attribute resolves in the
