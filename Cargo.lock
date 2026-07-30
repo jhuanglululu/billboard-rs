@@ -85,7 +85,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 [[package]]
 name = "wasmachine"
 version = "0.1.0"
-source = "git+https://github.com/jhuanglululu/wasmachine-rs#549f04fe4ef6e3cd2c7c0fdbc49b90cd10243f1c"
+source = "git+https://github.com/jhuanglululu/wasmachine-rs#a9d39b367659e1d06beffb045dd172a54af7ffab"
 dependencies = [
  "bytemuck",
  "wasmachine-macros",
@@ -94,7 +94,7 @@ dependencies = [
 [[package]]
 name = "wasmachine-macros"
 version = "0.1.0"
-source = "git+https://github.com/jhuanglululu/wasmachine-rs#549f04fe4ef6e3cd2c7c0fdbc49b90cd10243f1c"
+source = "git+https://github.com/jhuanglululu/wasmachine-rs#a9d39b367659e1d06beffb045dd172a54af7ffab"
 dependencies = [
  "proc-macro2",
  "quote",
