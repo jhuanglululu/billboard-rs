@@ -50,12 +50,6 @@
 
 use billboard::prelude::*;
 
-/// Fixed seed: reproducible show, reproducible trace.
-///
-/// The attribute below needs a literal (it is read at compile time, before any
-/// const exists), so this constant and that literal have to agree by hand.
-const SEED: u64 = 20_260_726;
-
 const PANEL_W: i64 = 5;
 const PANEL_H: i64 = 3;
 /// Blocks in the colour-ramp strip.
@@ -91,8 +85,9 @@ billboard::payload! {
 fn main() -> ExitCode {
     log("demo v2: places, everyone");
 
-    // One master stream, split per performer *before* any spawn.
-    let mut master = SplitRng::new(SEED);
+    // One master stream, split per performer *before* any spawn. RANDOM_SEED
+    // is the `random_seed` literal above, re-emitted by the entry macro.
+    let mut master = SplitRng::new(RANDOM_SEED as u64);
     let mut lamp_rng = master.split();
     let mut orbit_rng = master.split();
     let mut runner_rng = master.split();
