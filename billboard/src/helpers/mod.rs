@@ -17,7 +17,8 @@
 //! - [`Grid`] / [`GridLayout`] — a sheet of block displays on a regular pitch,
 //!   centred cells and all.
 //! - [`Timeline`] — keyframed states with per-segment easing.
-//! - [`text`] — typewriter and marquee effects for text displays.
+//! - [`text`] — typewriter and marquee effects for text displays, plus
+//!   `escape`/`styled` for putting computed strings inside MiniMessage safely.
 
 mod color;
 mod ease;

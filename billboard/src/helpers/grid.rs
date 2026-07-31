@@ -26,6 +26,27 @@
 //! sheet.pulse(1.15, Ticks::new(6));
 //! ```
 //!
+//! # Measure, then place
+//!
+//! A sheet's size falls out of its shape — `cols`, `rows`, `pitch` and `tile`
+//! decide [`width`](GridLayout::width) and [`height`](GridLayout::height), and
+//! the centre changes none of them. So when a scene has to lay several panels
+//! out *relative to each other*, the order is: build the layouts with
+//! [`GridLayout::sized`] (same shape, centred on [`Position::ZERO`]), ask them
+//! how big they are, and only then assign each one a `center`.
+//!
+//! ```ignore
+//! let mut a = GridLayout::sized(4, 8, 0.5, 0.45);
+//! let mut b = GridLayout::sized(8, 12, 0.5, 0.45);
+//! // Put B directly left of A, one block of air between their faces:
+//! a.center = anchor;
+//! b.center = anchor - Offset::new(a.width() / 2.0 + 1.0 + b.width() / 2.0, 0.0, 0.0);
+//! ```
+//!
+//! The fields are public precisely so that second step is a plain assignment;
+//! `sized` exists so the first one does not have to invent a throwaway centre
+//! it is about to overwrite.
+//!
 //! # Orientation
 //!
 //! The sheet lies in the **XY plane** at the layout centre's `z`: columns run
@@ -74,6 +95,22 @@ impl GridLayout {
             pitch,
             tile,
         }
+    }
+
+    /// The same layout centred on [`Position::ZERO`] — shape now, position
+    /// later.
+    ///
+    /// [`width`](GridLayout::width) and [`height`](GridLayout::height) do not
+    /// depend on the centre, so this is the constructor for the measure-then-
+    /// place pattern above: make the layouts, ask them how big they are,
+    /// then assign `center` (a public field) once the arithmetic is done.
+    ///
+    /// `GridLayout::sized(c, r, p, t)` is exactly
+    /// `GridLayout::new(Position::ZERO, c, r, p, t)`; it exists so a layout
+    /// whose centre is still unknown does not have to be given a placeholder
+    /// one that reads like a decision.
+    pub fn sized(cols: usize, rows: usize, pitch: f64, tile: f64) -> GridLayout {
+        GridLayout::new(Position::ZERO, cols, rows, pitch, tile)
     }
 
     /// How many cells the sheet has.
@@ -181,6 +218,13 @@ impl GridLayout {
 /// thought at 288 calls if you pulse it every tick. Handing a duration to
 /// `pulse`/`move_to` and letting the client interpolate always beats driving
 /// the grid yourself frame by frame.
+///
+/// The per-slice operations are the same arithmetic over fewer cells, and that
+/// is the point of them: [`fill_row`](Grid::fill_row) /
+/// [`fill_col`](Grid::fill_col) are one call per cell *in that slice*,
+/// [`pulse_row`](Grid::pulse_row) / [`pulse_col`](Grid::pulse_col) two, and
+/// [`pulse_cell`](Grid::pulse_cell) two full stop. A visualiser that highlights
+/// one row of a 16×9 sheet per tick spends 32 calls, not 288.
 pub struct Grid {
     layout: GridLayout,
     cells: Vec<BlockDisplay>,
@@ -273,6 +317,28 @@ impl Grid {
         }
     }
 
+    /// Recolour one row, asking `block` what belongs at each column. One host
+    /// call per column.
+    ///
+    /// The row-by-row reveal, and the cheap redraw when only one row of the
+    /// data moved: `fill` resends every cell whether it changed or not, so a
+    /// sorting visualiser that touches one row a tick should say so.
+    pub fn fill_row<B: Into<BlockState>>(&mut self, row: usize, mut block: impl FnMut(usize) -> B) {
+        for col in 0..self.layout.cols {
+            let i = self.index(col, row);
+            self.cells[i].set_block(block(col));
+        }
+    }
+
+    /// Recolour one column, asking `block` what belongs at each row. One host
+    /// call per row.
+    pub fn fill_col<B: Into<BlockState>>(&mut self, col: usize, mut block: impl FnMut(usize) -> B) {
+        for row in 0..self.layout.rows {
+            let i = self.index(col, row);
+            self.cells[i].set_block(block(row));
+        }
+    }
+
     /// Scale every tile to `factor` of its resting size over `over` ticks,
     /// keeping each one centred on its cell.
     ///
@@ -284,6 +350,48 @@ impl Grid {
     /// it out.
     pub fn pulse(&mut self, factor: f64, over: Ticks) {
         self.apply_tile(self.layout.tile * factor, over);
+    }
+
+    /// Scale **one cell** to `factor` of the sheet's resting tile size over
+    /// `over` ticks, keeping it centred on its own cell. The "this is the
+    /// element we are looking at" move.
+    ///
+    /// The layout is untouched, so `pulse_cell(col, row, 1.0, …)` puts the cell
+    /// back exactly where its neighbours are — that is the release half of a
+    /// highlight.
+    ///
+    /// # Why not just `cell_mut(col, row).set_scale(…)`
+    ///
+    /// Because a block display's position is its **low corner**, not its
+    /// centre: scaling in place grows the tile up and to the right (and towards
+    /// `+Z`) out of its cell, so a highlighted cell visibly drifts off the
+    /// lattice and a `factor` below 1.0 shrinks it into its own bottom-left
+    /// corner. Staying centred costs a matching move, which is why this is
+    /// **two** host calls and not one, and why it lives here rather than being
+    /// left to the caller.
+    ///
+    /// Non-blocking: `sleep(over)` to wait it out.
+    pub fn pulse_cell(&mut self, col: usize, row: usize, factor: f64, over: Ticks) {
+        self.apply_cell(col, row, self.layout.tile * factor, over);
+    }
+
+    /// [`pulse_cell`](Grid::pulse_cell) across a whole row — the sweep a
+    /// row-by-row reveal or a "this row is active" highlight is made of. Two
+    /// host calls per column.
+    pub fn pulse_row(&mut self, row: usize, factor: f64, over: Ticks) {
+        let tile = self.layout.tile * factor;
+        for col in 0..self.layout.cols {
+            self.apply_cell(col, row, tile, over);
+        }
+    }
+
+    /// [`pulse_cell`](Grid::pulse_cell) down a whole column. Two host calls per
+    /// row.
+    pub fn pulse_col(&mut self, col: usize, factor: f64, over: Ticks) {
+        let tile = self.layout.tile * factor;
+        for row in 0..self.layout.rows {
+            self.apply_cell(col, row, tile, over);
+        }
     }
 
     /// Change the resting tile size — the sheet keeps its pitch, so this opens
@@ -309,18 +417,25 @@ impl Grid {
     pub fn despawn(self) {}
 
     /// Place and scale every cell for a tile size of `tile`, without touching
-    /// the layout's own value. Position and scale both move: a display grows
-    /// from its corner, so a tile that changes size must be re-anchored to stay
-    /// centred on its cell.
+    /// the layout's own value. Row-major, like everything else here.
     fn apply_tile(&mut self, tile: f64, over: Ticks) {
-        let layout = self.layout;
-        let scale = Scale::splat(tile);
-        for (i, cell) in self.cells.iter_mut().enumerate() {
-            let (col, row) = (i % layout.cols, i / layout.cols);
-            let at = GridLayout::centered(layout.cell_center(col, row), scale);
-            cell.move_to(at, over);
-            cell.scale_to(scale, over);
+        for row in 0..self.layout.rows {
+            for col in 0..self.layout.cols {
+                self.apply_cell(col, row, tile, over);
+            }
         }
+    }
+
+    /// The re-anchor dance for one cell, and the only place it is written:
+    /// position and scale both move, because a display grows from its corner,
+    /// so a tile that changes size must be pulled back half the difference to
+    /// stay centred on its cell. Two host calls.
+    fn apply_cell(&mut self, col: usize, row: usize, tile: f64, over: Ticks) {
+        let scale = Scale::splat(tile);
+        let at = GridLayout::centered(self.layout.cell_center(col, row), scale);
+        let cell = self.cell_mut(col, row);
+        cell.move_to(at, over);
+        cell.scale_to(scale, over);
     }
 
     fn index(&self, col: usize, row: usize) -> usize {

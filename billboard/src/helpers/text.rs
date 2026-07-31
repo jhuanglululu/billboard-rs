@@ -1,5 +1,5 @@
 //! Text effects for [`TextDisplay`]: [`typewriter`] and [`marquee`], plus
-//! [`escape`] for putting arbitrary strings inside markup.
+//! [`escape`] and [`styled`] for putting arbitrary strings inside markup.
 //!
 //! Both are **blocking**: they sleep between frames, so call them from a task
 //! whose job is that sign.
@@ -66,6 +66,43 @@ pub fn escape(raw: &str) -> String {
             _ => out.push(c),
         }
     }
+    out
+}
+
+/// Your markup around their text: `prefix + escape(body) + suffix`.
+///
+/// The one-shot form of what [`typewriter_styled`] does per frame, and the
+/// answer to "I need to put a computed value inside a tag". Styling you wrote
+/// passes through as markup; `body` is escaped, so a `<` in it is a literal `<`
+/// and never a tag, a parse error, or an animation-ending one (see
+/// [`escape`]).
+///
+/// ```
+/// use billboard::helpers::text;
+///
+/// assert_eq!(text::styled("<gold>", "42%", "</gold>"), "<gold>42%</gold>");
+/// // The body cannot open a tag of its own, however it was computed:
+/// assert_eq!(
+///     text::styled("<gray>", "<red>", "</gray>"),
+///     "<gray>\\<red></gray>"
+/// );
+/// ```
+///
+/// ```ignore
+/// // A live readout whose value comes from data and whose colour comes from you:
+/// readout.set_text(text::styled("<bold><aqua>", &format!("{steps} steps"), "</aqua></bold>"));
+/// ```
+///
+/// Nothing checks that `prefix` and `suffix` are *valid* MiniMessage or that
+/// they balance — they are yours, and a malformed tag of your own still kills
+/// the run from inside `set_text`. What this guarantees is that `body` cannot
+/// be the thing that breaks them.
+pub fn styled(prefix: &str, body: &str, suffix: &str) -> String {
+    let escaped = escape(body);
+    let mut out = String::with_capacity(prefix.len() + escaped.len() + suffix.len());
+    out.push_str(prefix);
+    out.push_str(&escaped);
+    out.push_str(suffix);
     out
 }
 

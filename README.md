@@ -53,3 +53,84 @@ cargo build --release --target wasm32-unknown-unknown -p billboard
 The ABI is `wasm32-unknown-unknown`-only; on a native target the host calls
 are stubs that panic, which is why the tests stay on the pure-guest side of
 the SDK.
+
+### Make your animation crate testable
+
+An animation is a `cdylib` because that is what the plugin loads — but a
+`cdylib` alone cannot be linked by a test binary, so `cargo test` in an
+animation crate finds nothing to run. Add `rlib` alongside it:
+
+```toml
+[lib]
+crate-type = ["cdylib", "rlib"]
+```
+
+That buys the whole pure-logic half of an animation: the model, the
+schedule, the layout arithmetic, anything that computes rather than spawns.
+It is testable natively because the SDK's host stubs implement the math
+kernel with Rust's own `f64` methods, so `sin`, `pow`, `exp` and friends give
+the same answers off-target — only the entity and effect calls panic. Keep
+the arithmetic in its own module, put `#[cfg(test)] mod tests` next to it,
+and leave the entity driving to the `#[billboard::main]` side. `demo/` is set
+up this way; an animation written against this SDK caught a real bug in its
+own maths from such a test, before it was ever loaded into a server.
+
+**It is not free, despite what you may have been told.** Asking for a second
+crate type costs the cdylib its fat LTO, so the shipped module grows: `demo`
+measures **143,582 bytes with the rlib against 98,452 without**, same source,
+both at the workspace's `lto = true` / `opt-level = "s"`. (With `lto = false`
+the two land within a kilobyte of each other, which is how you can tell LTO
+is the cause and not the extra code.) Losing fat LTO also loses cross-crate
+inlining, so a module built this way plausibly executes somewhat *more*
+interpreted instructions per tick as well — that part is unmeasured, and
+worth remembering only if an animation is already near the instruction
+budget. Take the rlib by default; delete the line for a shipping build if an
+animation is big or hot enough for either cost to matter.
+
+## The prelude, item by item
+
+`use billboard::prelude::*;` brings in everything below. The reference is
+`cargo doc`; this is the map.
+
+**Entry point and runtime** — `main` (the `#[billboard::main]` attribute),
+`ExitCode` (how the run ends, and how the host cleans up), `log`,
+`sleep`, `spawn` (fork a task), `Task` (its handle: `join`/`kill`).
+
+**Math** — `Position` (origin-relative point), `Offset` (a displacement
+between them), `Vector3d` / `Vector3i`, `Velocity`, `Scale`, `Rotation`,
+`Degrees` / `Radians`, `Ticks` (durations, 50 ms each).
+
+**Entities** — `BlockDisplay`, `ItemDisplay`, `TextDisplay`, `ArmorStand`,
+`Item` (the five kinds), each with a `…State` builder (`BlockDisplayState`,
+`ItemDisplayState`, `TextDisplayState`, `ArmorStandState`, `ItemState`);
+`Entity` (the shared trait), `BlockState` / `ItemStr` (what a display is
+*showing*), `BillboardMode` and `DisplayContext` (client-side orientation and
+item render context), `TextFlags`, `StandFlags`, `Pose` / `PosePart`
+(armour-stand limbs), `EquipmentSlot`, `WeakRef` / `WeakMut` (non-owning
+handles to hand another task) and `Dead` (what they return once the entity
+is gone).
+
+**Randomness** — `default_random` (the per-instance deterministic stream),
+`SplitRng` (a `Pod` sub-stream you can send down a channel), `Rng` (the
+trait both implement).
+
+**Registry** — `blocks` / `items` (the compile-time-checked id constants),
+`BlockId` / `ItemId`, `BlockStateBuilder` and the property enums it takes
+(`Axis`, `Facing`, `Half`).
+
+**Helpers** — `Color` / `Oklab` / `Gradient` (perceptual colour),
+`BlockPalette` (nearest block to a colour), `Ease` (easing curves), `Path`
+(lines, arcs, béziers), `Group` + `Local` (many entities moved as one),
+`Grid` + `GridLayout` (a sheet of block displays, centred cells and all),
+`Timeline` + `Animate` + `Tween` (keyframed states), and the `text` module
+(`escape`, `styled`, `typewriter`, `marquee`).
+
+**Effects** — `sound` and `particle` (the fire-and-forget builders),
+`SoundCategory`, `Particle`.
+
+**Tasks and sync** — `channel` + `Sender` / `Receiver` (typed, `Pod`
+payloads), `Signal`, `Barrier`, `Waitable` (`.and()` / `.or()`), `Policy`.
+
+**Payload derives** — `Pod`, `Zeroable`, the bound a channel payload must
+satisfy. `billboard::payload!` applies them for you with the right crate
+path.

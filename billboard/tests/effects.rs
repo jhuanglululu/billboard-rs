@@ -196,6 +196,49 @@ fn escape_handles_every_occurrence_not_just_the_first() {
     assert_eq!(text::escape("<\\<"), "\\<\\\\\\<");
 }
 
+// --- text::styled: your markup outside, their text escaped inside ---
+
+#[test]
+fn styled_wraps_the_body_without_touching_the_markup() {
+    // The ordinary case: prefix and suffix pass through verbatim, body is
+    // already safe and comes out unchanged.
+    assert_eq!(
+        text::styled("<gold>", "42 steps", "</gold>"),
+        "<gold>42 steps</gold>"
+    );
+    // Empty affixes are just escape.
+    assert_eq!(text::styled("", "<red>", ""), text::escape("<red>"));
+    assert_eq!(text::styled("", "", ""), "");
+}
+
+#[test]
+fn styled_escapes_only_the_body() {
+    // A body that looks like markup stays text — this is the whole point.
+    assert_eq!(
+        text::styled("<gray>", "<red>danger", "</gray>"),
+        "<gray>\\<red>danger</gray>"
+    );
+    // Backslashes in the body are doubled, exactly as `escape` does…
+    assert_eq!(text::styled("<b>", "a\\b", "</b>"), "<b>a\\\\b</b>");
+    // …while a backslash the *caller* wrote in the affixes is theirs to mean:
+    // an intentionally escaped tag in the prefix survives untouched.
+    assert_eq!(text::styled("\\<not_a_tag>", "x", ""), "\\<not_a_tag>x");
+}
+
+#[test]
+fn styled_is_the_one_shot_form_of_typewriter_styleds_last_frame() {
+    // typewriter_styled builds prefix + frame + suffix, and its final frame is
+    // the whole string; styled is that, with the body escaped. For a body with
+    // no metacharacters the two agree character for character.
+    let (prefix, body, suffix) = ("<bold><gold>", "NOW OPEN", "</gold></bold>");
+    let last_frame = *text::typewriter_frames(body).last().unwrap();
+    assert_eq!(last_frame, body);
+    assert_eq!(
+        text::styled(prefix, body, suffix),
+        format!("{prefix}{body}{suffix}")
+    );
+}
+
 #[test]
 fn builders_are_inert_until_played_or_emitted() {
     // Building must not touch the ABI (the host stubs would panic) — the whole

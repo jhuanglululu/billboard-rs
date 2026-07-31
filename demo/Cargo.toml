@@ -4,7 +4,16 @@ version.workspace = true
 edition.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+# `cdylib` is the artifact the plugin loads. `rlib` is added so `cargo test` can
+# link this crate on the host target — a cdylib alone gives the test harness
+# nothing to link against, so an animation's own `#[cfg(test)]` module would
+# silently never run. This crate is the exemplar, so it pays that cost in the
+# open: asking for a second crate type costs the cdylib its fat LTO, and this
+# module measures 143,582 bytes with the rlib against 98,452 without (both at
+# `lto = true`, `opt-level = "s"`; with `lto = false` the two are within a
+# kilobyte of each other, which is what identifies LTO as the cause). Bigger
+# module, tests that run — worth it here, and the README says how to trade back.
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 billboard = { path = "../billboard" }

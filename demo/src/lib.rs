@@ -621,3 +621,38 @@ fn main() -> ExitCode {
     // leaked into the marquee task.
     ExitCode::End
 }
+
+/// The token test that earns this crate its `rlib`.
+///
+/// Nothing here touches an entity — the host stubs would panic — so it is the
+/// half of an animation that *is* testable natively: the constants and the
+/// pure helpers that decide how long the scene runs. The comments above claim
+/// specific frame counts; this is what stops them being lies after an edit.
+///
+/// A real animation puts its model and its schedule in modules of their own and
+/// tests them the same way.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_text_effects_run_for_the_lengths_the_comments_claim() {
+        // "NOW SHOWING" is 11 characters, so the typewriter plays 11 frames.
+        assert_eq!(HEADLINE.chars().count(), 11);
+        assert_eq!(text::typewriter_frames(HEADLINE).len(), 11);
+
+        // "THANKS FOR WATCHING" is 19 characters and the marquee emits one
+        // frame per character of the source, whatever the window.
+        assert_eq!(FAREWELL.chars().count(), 19);
+        assert_eq!(text::marquee_frames(FAREWELL, 12).len(), 19);
+    }
+
+    #[test]
+    fn the_panel_and_strip_are_the_sizes_the_entity_budget_assumes() {
+        // 5 x 3 = 15 panel blocks, plus a 16-tile strip: the numbers the
+        // crate-root budget note quotes as "about 50 entities at once".
+        assert_eq!(PANEL_W * PANEL_H, 15);
+        assert_eq!(STRIP_W, 16);
+        assert_eq!(CAST, 6);
+    }
+}

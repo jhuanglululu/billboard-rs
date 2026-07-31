@@ -14,10 +14,15 @@
 //! every axis to end up centred on its cell.
 //!
 //! Pure guest maths — no entities, so no ABI. [`Grid`](billboard::helpers::Grid)
-//! itself spawns displays and cannot be exercised without a host.
+//! itself spawns displays and cannot be exercised without a host: `spawn`,
+//! `fill`/`fill_row`/`fill_col`, `pulse`/`pulse_cell`/`pulse_row`/`pulse_col`,
+//! `resize` and `move_to` all drive real entities through host calls that are
+//! panicking stubs off-target. What *is* pinned here is the arithmetic they
+//! feed those calls — `cell_center` and `centered`, which is where the
+//! re-anchor dance those methods perform comes from.
 
 use billboard::helpers::GridLayout;
-use billboard::math::{Position, Scale};
+use billboard::math::{Offset, Position, Scale};
 
 fn approx(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
@@ -135,4 +140,46 @@ fn tile_scale_and_len_report_the_layout() {
     assert!(GridLayout::new(Position::ZERO, 0, 9, 0.5, 0.45).is_empty());
     let s = g.tile_scale();
     assert!(approx(s.x, 0.45) && approx(s.y, 0.45) && approx(s.z, 0.45));
+}
+
+#[test]
+fn sized_is_new_at_the_origin() {
+    // Same shape, centre at ZERO — so every cell centre is the offset from the
+    // sheet's middle, which is what makes it worth measuring before placing.
+    let g = GridLayout::sized(3, 3, 1.0, 1.0);
+    assert_eq!(g, GridLayout::new(Position::ZERO, 3, 3, 1.0, 1.0));
+    assert_pos(g.cell_center(1, 1), 0.0, 0.0, 0.0);
+    assert_pos(g.cell_center(0, 0), -1.0, 1.0, 0.0);
+}
+
+#[test]
+fn extent_does_not_depend_on_the_centre() {
+    // The premise of measure-then-place: width/height come from the shape
+    // alone, so a layout can be measured before anyone decides where it goes.
+    let at_origin = GridLayout::sized(4, 8, 0.5, 0.45);
+    let mut moved = at_origin;
+    moved.center = Position::new(-17.0, 62.5, 3.25);
+    assert!(approx(at_origin.width(), moved.width()));
+    assert!(approx(at_origin.height(), moved.height()));
+    // Worked by hand: 4 cells on a 0.5 pitch spans 3 * 0.5 + 0.45 = 1.95, and
+    // 8 rows spans 7 * 0.5 + 0.45 = 3.95.
+    assert!(approx(at_origin.width(), 1.95));
+    assert!(approx(at_origin.height(), 3.95));
+}
+
+#[test]
+fn measuring_then_placing_puts_a_gap_between_two_sheets_faces() {
+    // The pattern from the module docs: B sits left of A with exactly 1.0 of
+    // air between their facing edges.
+    let mut a = GridLayout::sized(4, 8, 0.5, 0.45); // width 1.95
+    let mut b = GridLayout::sized(8, 12, 0.5, 0.45); // width 3.95
+    a.center = Position::new(10.0, 5.0, 0.0);
+    b.center = a.center - Offset::new(a.width() / 2.0 + 1.0 + b.width() / 2.0, 0.0, 0.0);
+
+    // A's left face, B's right face, and the gap between them.
+    let a_left = a.center.x - a.width() / 2.0;
+    let b_right = b.center.x + b.width() / 2.0;
+    assert!(approx(a_left - b_right, 1.0));
+    // Sanity on the absolute number: 10 − (0.975 + 1.0 + 1.975) = 6.05.
+    assert!(approx(b.center.x, 6.05));
 }

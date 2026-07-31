@@ -36,6 +36,14 @@
 //! ```
 //!
 //! - `+X` is world east, `+Z` is world south, `+Y` is up — vanilla's axes.
+//! - **The assumed viewer stands at `−Z` and looks towards `+Z`** (facing
+//!   south, the northern side of the scene). Nothing in the plugin enforces
+//!   that — players walk where they like — but it is the direction the SDK's
+//!   helpers are written for, and the one that makes "left" and "right"
+//!   mean anything: it is why [`Grid`](helpers::Grid) puts column 0 on the
+//!   left and rows running down, and why a flat scene built in the XY plane
+//!   reads the right way round rather than mirrored. Build the front of a
+//!   scene facing `−Z`.
 //! - `Position::ZERO` is the exact point in `/billboard spawn <animation> <id>
 //!   <x> <y> <z> …`, which is a plain coordinate triple, *not* the admin's
 //!   position and not snapped to a block.
@@ -73,6 +81,39 @@
 //!   (rather than pausing) once they leave and the linger window expires — the
 //!   next approach starts a fresh run from the top. Build scenes that read from
 //!   inside that radius, and do not assume an animation ever gets to finish.
+//!
+//! ## How many host calls a tick is too many?
+//!
+//! The honest answer is that you are almost certainly asking about the wrong
+//! budget. Worked through, for the case that prompts the question — a 176-cell
+//! panel spawned in a single tick, which is two calls per cell (spawn, then
+//! scale) plus a handful of labels, so roughly **350 host calls**:
+//!
+//! - **Against the instruction budget: trivial.** A host call crossing costs
+//!   *tens* of interpreted instructions (the engine's ABI design notes give
+//!   that figure while arguing why transcendentals deserve a math kernel and
+//!   plain arithmetic does not). Even rounding a crossing up to a hundred,
+//!   350 of them is ~35,000 of 1,000,000 — a few per cent, before the
+//!   arithmetic that computed the arguments. You would have to be making tens
+//!   of thousands of calls in one tick for the crossings themselves to be the
+//!   thing that kills you. Note this is a design-doc figure, not one measured
+//!   from this SDK.
+//! - **Against the client: this is the number that matters.** Every one of
+//!   those calls becomes a packet *per viewer*, immediately — the renderer
+//!   sends on the calling thread, with no queue, no coalescing and no rate
+//!   limit anywhere in the plugin. A spawn is two packets (spawn + metadata),
+//!   each attribute one more, so that 350-call burst is ~530 packets per
+//!   viewer in one tick, and ~2,600 with five people watching. The bill is
+//!   `entities × changes-per-tick × viewers` and nothing on the host side
+//!   flattens the spike for you.
+//!
+//! So: hundreds of host calls in a tick is fine, and hundreds *every* tick is
+//! the thing to design away from. The levers are the ones the SDK already
+//! gives you — interpolate instead of stepping (`move_to`/`animate`/`pulse`
+//! with a duration is one packet for a whole movement), touch a slice rather
+//! than a sheet ([`Grid::fill_row`](helpers::Grid::fill_row),
+//! [`pulse_row`](helpers::Grid::pulse_row)), and stagger a big spawn across a
+//! few ticks with `sleep` when the burst is large enough to see.
 //!
 //! ## Entities
 //!
