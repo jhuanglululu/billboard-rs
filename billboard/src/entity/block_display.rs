@@ -1,5 +1,64 @@
 //! [`BlockDisplay`]: a client-side block display — a block, floating exactly
 //! where you put it, with a full transform.
+//!
+//! # Geometry — the position is the block's *corner*
+//!
+//! A block display's position is the **minimum corner** of its model, not its
+//! centre. At scale 1 the block fills the unit cube running from the position
+//! towards +X, +Y and +Z — the same cube the real block with those coordinates
+//! would occupy. Scale multiplies that cube about the same corner, so a
+//! `Scale::splat(0.4)` tile spawned at `p` occupies `p ..= p + 0.4` on every
+//! axis:
+//!
+//! ```text
+//!        +Y
+//!         │   ┌───────┐          scale 1: the cube [p, p+1]³
+//!         │   │       │          scale s: the cube [p, p+s]³
+//!         │   │       │
+//!         p ──┴───────┴── +X     p is the low corner, never the middle
+//!        ╱
+//!      +Z
+//! ```
+//!
+//! That is where hand-laid-out grids get their gap: tiles smaller than the cell
+//! pitch hug the low corner of their cell and leave the slack at the top and on
+//! the +X/+Z side, rather than splitting it evenly. To centre an `s`-sized tile
+//! on a point, spawn it at `point - Offset::splat(s / 2.0)` — or let
+//! [`Grid`](crate::helpers::Grid) do the arithmetic.
+//!
+//! The host adds nothing to this: it sends the display's transform translation
+//! as `(0, 0, 0)` and never changes it, so what you get is vanilla
+//! display-entity geometry with the placement origin added to your coordinates.
+//!
+//! # What the getters report mid-tween
+//!
+//! [`position`](BlockDisplay::position), [`rotation`](BlockDisplay::rotation),
+//! [`scale`](BlockDisplay::scale) and [`state`](BlockDisplay::state) return the
+//! **target** you last asked for, never an interpolated value. The host records
+//! the target the instant you set it and leaves the interpolation to the
+//! client, so `move_to(p, Ticks::new(40))` makes `position()` report `p` on the
+//! very next line — 40 ticks before anything has visibly arrived. There is no
+//! guest-side way to read the in-flight position; if you need to know where a
+//! display *looks* like it is, compute it (an [`Ease`](crate::helpers::Ease)
+//! over the same duration) rather than asking the host.
+//!
+//! # Accessor methods
+//!
+//! From the shared accessor macros: [`position`](BlockDisplay::position) /
+//! [`teleport_to`](BlockDisplay::teleport_to) / [`move_to`](BlockDisplay::move_to),
+//! [`rotation`](BlockDisplay::rotation) / [`set_rotation`](BlockDisplay::set_rotation) /
+//! [`rotate_to`](BlockDisplay::rotate_to),
+//! [`scale`](BlockDisplay::scale) / [`set_scale`](BlockDisplay::set_scale) /
+//! [`scale_to`](BlockDisplay::scale_to),
+//! [`billboard_mode`](BlockDisplay::billboard_mode) /
+//! [`set_billboard_mode`](BlockDisplay::set_billboard_mode),
+//! [`state`](BlockDisplay::state) / [`set`](BlockDisplay::set) /
+//! [`animate`](BlockDisplay::animate),
+//! [`weak`](BlockDisplay::weak) / [`weak_mut`](BlockDisplay::weak_mut) /
+//! [`despawn`](BlockDisplay::despawn) / [`leak`](BlockDisplay::leak).
+//! Block-display-specific: [`block`](BlockDisplay::block) /
+//! [`set_block`](BlockDisplay::set_block). The weak references carry the same
+//! set, each returning `Result<_, Dead>`.
 
 use super::{BillboardMode, BlockState, Dead, WeakMut, WeakRef, raw};
 use crate::math::{Position, Rotation, Scale, Ticks};

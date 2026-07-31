@@ -1,4 +1,5 @@
-//! Text effects for [`TextDisplay`]: [`typewriter`] and [`marquee`].
+//! Text effects for [`TextDisplay`]: [`typewriter`] and [`marquee`], plus
+//! [`escape`] for putting arbitrary strings inside markup.
 //!
 //! Both are **blocking**: they sleep between frames, so call them from a task
 //! whose job is that sign.
@@ -14,6 +15,59 @@
 
 use crate::entity::{Dead, TextDisplay, WeakMut};
 use crate::math::Ticks;
+
+/// Make an arbitrary string safe to drop into MiniMessage.
+///
+/// # Why you need it
+///
+/// A text display's content is **MiniMessage source**, parsed by the server
+/// with Adventure's default parser — the full grammar: `<red>`, `<bold>`,
+/// `<gradient:#a:#b>`, `<rainbow>`, `<hover:…>`, `<click:…>`, `<lang:…>`, the
+/// lot, non-strict (an unclosed `<gray>` styles the rest of the line, which is
+/// idiomatic, and an unknown tag such as `<notatag>` is passed through as
+/// literal text rather than rejected). What the parser *does* reject — a
+/// malformed tag, a `<gradient:notacolour>`, an unterminated quote in a tag
+/// argument — **kills the animation**, from inside `set_text`. There is no
+/// "renders as garbage" outcome to fall back on.
+///
+/// So the moment you interpolate a string you did not write — a player name, a
+/// value read from a payload, anything with a `<` in it — you are either
+/// producing markup you did not mean or handing the parser a syntax error that
+/// ends the run. `escape` removes both possibilities.
+///
+/// # The rule
+///
+/// Two characters carry meaning: `<` opens a tag, and `\` escapes. So `\`
+/// becomes `\\` (first, or it would double the backslashes we add) and `<`
+/// becomes `\<`. Everything else — `>`, quotes, colons, newlines, emoji — is
+/// already literal to the parser and is left alone.
+///
+/// This is character-for-character the rule the plugin itself applies to
+/// untrusted text before showing it to players, so guest and host agree on what
+/// "escaped" means.
+///
+/// ```
+/// use billboard::helpers::text;
+///
+/// assert_eq!(text::escape("<red>"), "\\<red>");
+/// assert_eq!(text::escape("plain text"), "plain text");
+/// ```
+///
+/// ```ignore
+/// // Style is yours, content is theirs:
+/// sign.set_text(format!("<gold>{}</gold> wins", text::escape(player_name)));
+/// ```
+pub fn escape(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for c in raw.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '<' => out.push_str("\\<"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
 
 /// The frames a typewriter plays: growing prefixes of `text`, one per character,
 /// from the first character to the whole string.

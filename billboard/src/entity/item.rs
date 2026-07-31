@@ -1,4 +1,26 @@
 //! [`Item`]: a dropped item, faked with packets — so it can never be picked up.
+//!
+//! # Geometry
+//!
+//! A dropped item sits **on** its position, the way a real dropped item rests
+//! on the ground it landed on; the client bobs and spins it about that point.
+//! Gravity is switched off host-side, so it stays exactly where you put it —
+//! every position it has comes from the animation.
+//!
+//! Getters report the **target**: the host records the value when you set it,
+//! and the per-tick tween packets that carry a `move_to` are invisible to the
+//! guest.
+//!
+//! # Accessor methods
+//!
+//! [`position`](Item::position) / [`teleport_to`](Item::teleport_to) /
+//! [`move_to`](Item::move_to),
+//! [`item`](Item::item) / [`set_item`](Item::set_item),
+//! [`state`](Item::state) / [`set`](Item::set) / [`animate`](Item::animate),
+//! [`weak`](Item::weak) / [`weak_mut`](Item::weak_mut) /
+//! [`despawn`](Item::despawn) / [`leak`](Item::leak). No rotation and no scale:
+//! an item entity has neither, so the methods do not exist. The weak references
+//! carry the same set, each returning `Result<_, Dead>`.
 
 use super::{ItemStr, raw};
 use crate::math::{Position, Ticks};

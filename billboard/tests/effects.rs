@@ -149,6 +149,53 @@ fn a_window_wider_than_the_text_has_nothing_to_scroll() {
     assert_eq!(text::marquee_frames("", 3), vec![""]);
 }
 
+// --- text::escape, against the host's own rule ---
+//
+// The plugin escapes untrusted text with `raw.replace("\\", "\\\\")
+// .replace("<", "\\<")` and its unit tests pin exactly these cases; the SDK's
+// copy has to agree character for character, or a name that is safe on one side
+// is markup (or a parse error, which kills) on the other. Expectations below are
+// written out by hand, not derived from the implementation.
+
+#[test]
+fn escape_neutralises_every_tag_opener() {
+    assert_eq!(text::escape("<red>"), "\\<red>");
+    // The dangerous one: a click tag would otherwise run a command on click.
+    assert_eq!(
+        text::escape("<click:run_command:'/op'>"),
+        "\\<click:run_command:'/op'>"
+    );
+    // Only '<' opens a tag, so '>' is ordinary text and stays put.
+    assert_eq!(text::escape("a > b"), "a > b");
+}
+
+#[test]
+fn escape_doubles_backslashes_so_they_cannot_re_enable_a_tag() {
+    // A lone backslash is doubled…
+    assert_eq!(text::escape("hi\\there"), "hi\\\\there");
+    // …and doing so before escaping '<' is what stops "\<red>" (an already
+    // escaped tag in the input) from collapsing back into a live tag: the
+    // backslash becomes two, and the '<' gains its own.
+    assert_eq!(text::escape("\\<red>"), "\\\\\\<red>");
+}
+
+#[test]
+fn escape_leaves_everything_else_alone() {
+    assert_eq!(text::escape("plain text"), "plain text");
+    assert_eq!(text::escape(""), "");
+    // Colons, quotes, hashes and newlines are only meaningful *inside* a tag.
+    assert_eq!(text::escape("a:b '#c'\nd"), "a:b '#c'\nd");
+    // Multi-byte characters pass through untouched.
+    assert_eq!(text::escape("héllo 🎉"), "héllo 🎉");
+}
+
+#[test]
+fn escape_handles_every_occurrence_not_just_the_first() {
+    assert_eq!(text::escape("<a><b>"), "\\<a>\\<b>");
+    assert_eq!(text::escape("\\\\"), "\\\\\\\\");
+    assert_eq!(text::escape("<\\<"), "\\<\\\\\\<");
+}
+
 #[test]
 fn builders_are_inert_until_played_or_emitted() {
     // Building must not touch the ABI (the host stubs would panic) — the whole

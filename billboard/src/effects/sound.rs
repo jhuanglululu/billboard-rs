@@ -71,7 +71,18 @@ impl SoundBuilder {
         self
     }
 
-    /// Playback pitch; `0.5`..`2.0` is the range clients honour.
+    /// Playback pitch — a resampling rate, so `2.0` is one octave up, `0.5`
+    /// one octave down, and note-block melodies are pitch ratios rather than
+    /// note names.
+    ///
+    /// **Usable range: `0.5`..=`2.0`.** Nothing on the way there clamps it for
+    /// you: the plugin forwards whatever you pass straight into the sound
+    /// packet (the only sound argument it checks is the category), so a `5.0`
+    /// is sent, and it is the *client* that clamps playback into `0.5..=2.0`.
+    /// Vanilla's own `/playsound` refuses anything outside `0.0..=2.0` at the
+    /// command line for the same reason. Values outside the range are therefore
+    /// silent no-ops in the musical sense — not an error, just no more pitch —
+    /// so map your data into `0.5..=2.0` yourself.
     pub fn pitch(mut self, pitch: f64) -> SoundBuilder {
         self.pitch = pitch;
         self

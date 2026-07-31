@@ -17,6 +17,80 @@
 //!     ExitCode::End // drop despawns; the code tells the host how to clean up
 //! }
 //! ```
+//!
+//! # The coordinate frame you are writing in
+//!
+//! Every [`Position`](math::Position) an animation hands the host is
+//! **origin-relative**, and the frame is a pure translation of the world's: the
+//! plugin adds the placement's `x/y/z` to your coordinates and sends the result.
+//! There is no rotation, no scaling, and no facing — the axes are the world's
+//! axes, always, no matter where the admin stood when they typed the command.
+//!
+//! ```text
+//!            +Y  up
+//!             │
+//!             │
+//!             O ────── +X  east          O = Position::ZERO
+//!            ╱                             = the placement's x y z
+//!          +Z  south
+//! ```
+//!
+//! - `+X` is world east, `+Z` is world south, `+Y` is up — vanilla's axes.
+//! - `Position::ZERO` is the exact point in `/billboard spawn <animation> <id>
+//!   <x> <y> <z> …`, which is a plain coordinate triple, *not* the admin's
+//!   position and not snapped to a block.
+//! - Nothing is oriented towards the viewer. A sign built in the XY plane faces
+//!   north/south; to face it another way, rotate it yourself (
+//!   [`set_rotation`](entity::BlockDisplay::set_rotation), or a
+//!   [`Group`](helpers::Group) turned as one), or give text and item displays a
+//!   [`BillboardMode`](entity::BillboardMode) and let the client turn them.
+//! - The same relative coordinates are used by sounds and particles, so a
+//!   `Position` means one thing everywhere in the SDK.
+//!
+//! Consequence worth internalising: two placements of one animation are the
+//! same scene in two spots, and an animation that hardcodes `y = 3.0` is three
+//! blocks above whatever `y` the placement was given.
+//!
+//! # What the host gives you per tick
+//!
+//! These are the plugin's **defaults**, from its shipped `config.toml`; an
+//! operator can change them, so treat them as the budget you should fit inside
+//! comfortably rather than a constant to compute against.
+//!
+//! - **Instructions: 1,000,000 per instance per game tick**, shared by every
+//!   task. Overrunning it is not throttling — the animation is killed and
+//!   paused, loudly. A million interpreted instructions is a lot of arithmetic
+//!   and a poor budget for, say, converting a whole colour table per lookup
+//!   (see [`BlockPalette`](helpers::BlockPalette)); host calls are cheap in
+//!   *this* budget but are real packets, which is the other number to watch.
+//! - **Memory: 16 MiB per instance**, and **every task fork copies the whole
+//!   memory**, so a three-task animation can cost three times that. Channel
+//!   buffers count towards it too.
+//! - **Ticks are 50 ms** and the interpreter runs on a worker pool, never the
+//!   main thread — a slow tick of yours costs you, not the server's TPS.
+//! - **Audience: a 64-block radius** around the placement origin, by default.
+//!   An instance only runs while an eligible player is inside it, and it *dies*
+//!   (rather than pausing) once they leave and the linger window expires — the
+//!   next approach starts a fresh run from the top. Build scenes that read from
+//!   inside that radius, and do not assume an animation ever gets to finish.
+//!
+//! ## Entities
+//!
+//! There is **no hard cap** in the plugin: it never refuses a spawn, and there
+//! is no per-instance entity limit anywhere in its code. What there is instead:
+//! every entity is a client-side fake, so each one costs a spawn packet plus a
+//! metadata packet per viewer, and every attribute you set costs one more
+//! packet per viewer. The bill scales with `entities × changes-per-tick ×
+//! viewers`, and that product — not a limit — is what eventually hurts.
+//!
+//! For a reference point: `demo/src/lib.rs`, the SDK's worked example, holds
+//! about **50** entities at once (a 15-block panel, a 16-tile colour strip, a
+//! five-part logo group and a handful of performers), and its busiest stretch
+//! re-blocks all 16 strip tiles every other tick. That runs comfortably. Grids in
+//! the low hundreds are fine if you touch a slice of them per tick rather than
+//! all of them; a thousand entities all animating every tick is a packet
+//! firehose, and interpolated `move_to`/`animate` (one packet, client-side
+//! interpolation) is how you avoid needing to.
 
 mod abi;
 pub mod effects;
@@ -148,8 +222,8 @@ pub mod prelude {
         WeakMut, WeakRef,
     };
     pub use crate::helpers::{
-        Animate, BlockPalette, Color, Ease, Gradient, Group, Local, Oklab, Path, Timeline, Tween,
-        text,
+        Animate, BlockPalette, Color, Ease, Gradient, Grid, GridLayout, Group, Local, Oklab, Path,
+        Timeline, Tween, text,
     };
     pub use crate::math::{
         Degrees, Offset, Position, Radians, Rotation, Scale, Ticks, Vector3d, Vector3i, Velocity,

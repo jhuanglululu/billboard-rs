@@ -1,5 +1,34 @@
 //! [`ArmorStand`]: a posable armor stand — six limbs, six equipment slots,
 //! and a yaw, all tweened by the host.
+//!
+//! # Geometry
+//!
+//! An armor stand stands **on** its position: the position is the feet, and the
+//! model rises from there, like any vanilla mob. Yaw turns it about that
+//! vertical axis. It has no rotation or scale of its own — a compile error
+//! rather than a runtime kill if you reach for `rotate_to`/`scale_to`.
+//!
+//! Getters report the **target** even mid-tween: the host stores what you asked
+//! for and the per-tick tween packets are bookkeeping the guest never sees.
+//!
+//! # Accessor methods
+//!
+//! [`position`](ArmorStand::position) / [`teleport_to`](ArmorStand::teleport_to) /
+//! [`move_to`](ArmorStand::move_to),
+//! [`yaw`](ArmorStand::yaw) / [`set_yaw`](ArmorStand::set_yaw) /
+//! [`turn_to`](ArmorStand::turn_to),
+//! [`pose`](ArmorStand::pose) / [`set_pose`](ArmorStand::set_pose) /
+//! [`animate_pose`](ArmorStand::animate_pose) and the per-part
+//! [`pose_part`](ArmorStand::pose_part) / [`set_pose_part`](ArmorStand::set_pose_part) /
+//! [`animate_pose_part`](ArmorStand::animate_pose_part),
+//! [`set_equipment`](ArmorStand::set_equipment),
+//! [`flags`](ArmorStand::flags) / [`set_flags`](ArmorStand::set_flags) plus the
+//! four single-bit setters,
+//! [`state`](ArmorStand::state) / [`set`](ArmorStand::set) /
+//! [`animate`](ArmorStand::animate),
+//! [`weak`](ArmorStand::weak) / [`weak_mut`](ArmorStand::weak_mut) /
+//! [`despawn`](ArmorStand::despawn) / [`leak`](ArmorStand::leak). The weak
+//! references carry the same set, each returning `Result<_, Dead>`.
 
 use super::{Dead, EquipmentSlot, ItemStr, PosePart, StandFlags, WeakMut, WeakRef, raw};
 use crate::math::{Degrees, Position, Ticks};

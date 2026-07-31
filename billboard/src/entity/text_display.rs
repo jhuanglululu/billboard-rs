@@ -1,4 +1,58 @@
 //! [`TextDisplay`]: floating text, styled with MiniMessage.
+//!
+//! # Geometry — the position is the middle of the text
+//!
+//! Unlike a [`BlockDisplay`](crate::entity::BlockDisplay), whose position is
+//! its low corner, a text display's text is **centred on its position**: the
+//! block of lines is centred horizontally about the anchor, and the stack of
+//! lines is centred vertically about it too. A one-line sign therefore
+//! straddles its `y` rather than standing on it, and adding a second line grows
+//! the block half a line up and half a line down.
+//!
+//! Text is drawn at roughly `0.025` blocks per font pixel at scale 1, so a line
+//! is about a quarter of a block tall and [`line_width`](TextDisplay::line_width)
+//! — a *pixel* width, vanilla default 200 — wraps at about five blocks.
+//! [`set_scale`](TextDisplay::set_scale) multiplies all of that, about the same
+//! centre.
+//!
+//! Practical consequence: a caption under a block grid wants its position at
+//! the grid's bottom edge minus a gap *plus* half its own height, not flush
+//! with the edge, and a caption and a block tile at the same `y` do **not**
+//! line up.
+//!
+//! The host adds nothing of its own — the display's transform translation goes
+//! out as `(0, 0, 0)` — so this is plain vanilla text-display geometry with the
+//! placement origin added to your coordinates.
+//!
+//! # What the getters report mid-tween
+//!
+//! [`position`](TextDisplay::position), [`rotation`](TextDisplay::rotation),
+//! [`scale`](TextDisplay::scale) and [`state`](TextDisplay::state) return the
+//! **target** you last asked for, not an interpolated value: the host stores
+//! the target when you set it and the client does the smoothing. Right after
+//! `move_to(p, Ticks::new(20))`, `position()` is already `p`.
+//!
+//! # Accessor methods
+//!
+//! From the shared accessor macros: [`position`](TextDisplay::position) /
+//! [`teleport_to`](TextDisplay::teleport_to) / [`move_to`](TextDisplay::move_to),
+//! [`rotation`](TextDisplay::rotation) / [`set_rotation`](TextDisplay::set_rotation) /
+//! [`rotate_to`](TextDisplay::rotate_to),
+//! [`scale`](TextDisplay::scale) / [`set_scale`](TextDisplay::set_scale) /
+//! [`scale_to`](TextDisplay::scale_to),
+//! [`billboard_mode`](TextDisplay::billboard_mode) /
+//! [`set_billboard_mode`](TextDisplay::set_billboard_mode),
+//! [`state`](TextDisplay::state) / [`set`](TextDisplay::set) /
+//! [`animate`](TextDisplay::animate),
+//! [`weak`](TextDisplay::weak) / [`weak_mut`](TextDisplay::weak_mut) /
+//! [`despawn`](TextDisplay::despawn) / [`leak`](TextDisplay::leak).
+//! Text-specific: [`text`](TextDisplay::text) / [`set_text`](TextDisplay::set_text),
+//! [`background`](TextDisplay::background) / [`set_background`](TextDisplay::set_background),
+//! [`opacity`](TextDisplay::opacity) / [`set_opacity`](TextDisplay::set_opacity),
+//! [`line_width`](TextDisplay::line_width) / [`set_line_width`](TextDisplay::set_line_width),
+//! [`flags`](TextDisplay::flags) / [`set_flags`](TextDisplay::set_flags) and the
+//! three single-bit setters. The weak references carry the same set, each
+//! returning `Result<_, Dead>`.
 
 use super::{BillboardMode, Dead, TextFlags, WeakMut, WeakRef, raw};
 use crate::helpers::Color;

@@ -18,6 +18,21 @@ pub enum ExitCode {
     Keep = 1,
     /// Clear everything, then start the animation again immediately — for
     /// looping shows.
+    ///
+    /// A repeat is a **fresh instance, not a jump back to the top of `main`**.
+    /// The host despawns every entity the run ever spawned (leaked ones
+    /// included), throws the interpreter away and builds a new one: new memory,
+    /// so every global and every `static` is back at its initial value, no
+    /// tasks, no channels, no entity ids carried over. Nothing you stashed
+    /// outside `main`'s stack survives the loop, and nothing you leaked stays
+    /// on screen through it — if you want a scene to persist between passes,
+    /// don't repeat; rebuild it, or loop inside `main` instead.
+    ///
+    /// The **deterministic random stream restarts from the same seed**: the
+    /// host derives it from (animation, placement id, owner), which a repeat
+    /// does not change, so a `random_seed = N` animation replays an identical
+    /// pass every time. The non-deterministic stream is the one that gives a
+    /// repeat something new to say.
     Repeat = 2,
 }
 

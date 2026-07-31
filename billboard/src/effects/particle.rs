@@ -1,4 +1,15 @@
 //! [`particle`]: emit particles at a position.
+//!
+//! The three shared knobs — [`count`](ParticleBuilder::count),
+//! [`offset`](ParticleBuilder::offset) and [`speed`](ParticleBuilder::speed) —
+//! are vanilla's own, forwarded to the particle packet untouched by the plugin,
+//! so they mean exactly what `/particle` means by them. Each is documented on
+//! its builder method, including the `count = 0` mode that turns `offset` into
+//! a direction.
+//!
+//! Emissions are sent with the protocol's *long distance* flag set, so viewers
+//! see them from further away than the vanilla 32-block cutoff — a billboard is
+//! usually looked at from across a plaza.
 
 use crate::abi::marshal::{self, ParticleArgs};
 use crate::entity::{BlockState, ItemStr};
@@ -115,21 +126,48 @@ pub struct ParticleBuilder {
 }
 
 impl ParticleBuilder {
-    /// How many particles to spawn.
+    /// How many particles to spawn — and which of vanilla's two modes the
+    /// emission uses.
+    ///
+    /// `count >= 1` is the normal *cloud* mode: that many particles, each
+    /// scattered by [`offset`](ParticleBuilder::offset) and given a random
+    /// velocity scaled by [`speed`](ParticleBuilder::speed).
+    ///
+    /// `count == 0` switches vanilla into *directional* mode: exactly one
+    /// particle is spawned at `position` and the offset triple stops being a
+    /// spread — it becomes a **velocity vector**, multiplied by `speed`. That is
+    /// how you aim a single mote (`.count(0).offset(Offset::new(0.0, 1.0,
+    /// 0.0)).speed(0.3)` shoots it upwards). Worth knowing before you compute a
+    /// count from data that can reach zero.
     pub fn count(mut self, count: u32) -> ParticleBuilder {
         self.count = i32::try_from(count).expect("particle count overflows i32");
         self
     }
 
-    /// Per-axis random spread around `position` (vanilla treats it as a
-    /// standard deviation, not a hard box).
+    /// Per-axis spread around `position`, in blocks: vanilla samples a gaussian
+    /// with this as its **standard deviation** on each axis, so it is a soft
+    /// cloud, not a box — roughly two thirds of the particles land within one
+    /// offset of the centre and a few go noticeably further. `Offset::splat(0.2)`
+    /// is a tight puff; `1.0` fills a block-sized region loosely.
+    ///
+    /// When [`count`](ParticleBuilder::count) is `0` this is a velocity vector
+    /// instead. See that method.
     pub fn offset(mut self, offset: impl AsRef<Offset>) -> ParticleBuilder {
         self.offset = *offset.as_ref();
         self
     }
 
-    /// Particle speed. For most particles this scales their initial velocity;
-    /// a few reinterpret it entirely — vanilla's own quirk.
+    /// How fast the particles set off, in blocks per tick, as a scale on the
+    /// random velocity vanilla gives each one: `0.0` leaves them hanging where
+    /// they spawned (what you want for a static shape), small values like `0.05`
+    /// drift, `1.0` sprays.
+    ///
+    /// A handful of particle types reinterpret this field entirely — vanilla's
+    /// own quirk, e.g. `note` uses it to pick the note's colour — so treat it as
+    /// "the protocol's max-speed field" for those.
+    ///
+    /// With [`count`](ParticleBuilder::count) `0`, it is the multiplier on the
+    /// offset-as-velocity vector.
     pub fn speed(mut self, speed: f64) -> ParticleBuilder {
         self.speed = speed;
         self

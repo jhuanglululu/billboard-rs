@@ -1,5 +1,36 @@
 //! [`ItemDisplay`]: a client-side item display — any item model, floating with
 //! a full transform, rendered as if it were held, worn, dropped or in a GUI.
+//!
+//! # Geometry
+//!
+//! An item display's item model is drawn **centred on the position** (the
+//! [`DisplayContext`] chooses which of vanilla's item transforms is applied on
+//! top of that, which is what makes a `Head` sword sit differently from a
+//! `Gui` one). Unlike a [`BlockDisplay`](crate::entity::BlockDisplay), whose
+//! position is its low corner, there is no half-block offset to compensate for
+//! here. The host contributes nothing either way: the transform translation is
+//! sent as `(0, 0, 0)` and never changed.
+//!
+//! Getters report the **target**, not an interpolated value: right after
+//! `move_to(p, over)`, `position()` is already `p`.
+//!
+//! # Accessor methods
+//!
+//! [`position`](ItemDisplay::position) / [`teleport_to`](ItemDisplay::teleport_to) /
+//! [`move_to`](ItemDisplay::move_to),
+//! [`rotation`](ItemDisplay::rotation) / [`set_rotation`](ItemDisplay::set_rotation) /
+//! [`rotate_to`](ItemDisplay::rotate_to),
+//! [`scale`](ItemDisplay::scale) / [`set_scale`](ItemDisplay::set_scale) /
+//! [`scale_to`](ItemDisplay::scale_to),
+//! [`billboard_mode`](ItemDisplay::billboard_mode) /
+//! [`set_billboard_mode`](ItemDisplay::set_billboard_mode),
+//! [`item`](ItemDisplay::item) / [`set_item`](ItemDisplay::set_item),
+//! [`context`](ItemDisplay::context) / [`set_context`](ItemDisplay::set_context),
+//! [`state`](ItemDisplay::state) / [`set`](ItemDisplay::set) /
+//! [`animate`](ItemDisplay::animate),
+//! [`weak`](ItemDisplay::weak) / [`weak_mut`](ItemDisplay::weak_mut) /
+//! [`despawn`](ItemDisplay::despawn) / [`leak`](ItemDisplay::leak). The weak
+//! references carry the same set, each returning `Result<_, Dead>`.
 
 use super::{BillboardMode, Dead, DisplayContext, ItemStr, WeakMut, WeakRef, raw};
 use crate::math::{Position, Rotation, Scale, Ticks};

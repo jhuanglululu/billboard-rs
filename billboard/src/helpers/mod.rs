@@ -14,11 +14,14 @@
 //! - [`Ease`] — the standard easing curves.
 //! - [`Path`] — lines, circles, arcs, béziers.
 //! - [`Group`] — many entities moved as one rigid assembly.
+//! - [`Grid`] / [`GridLayout`] — a sheet of block displays on a regular pitch,
+//!   centred cells and all.
 //! - [`Timeline`] — keyframed states with per-segment easing.
 //! - [`text`] — typewriter and marquee effects for text displays.
 
 mod color;
 mod ease;
+mod grid;
 mod group;
 mod palette;
 mod path;
@@ -27,6 +30,7 @@ mod timeline;
 
 pub use color::{Color, Gradient, Oklab};
 pub use ease::Ease;
+pub use grid::{Grid, GridLayout};
 pub use group::{DeadMembers, Group, GroupMember, Local};
 pub use palette::BlockPalette;
 pub use path::Path;
