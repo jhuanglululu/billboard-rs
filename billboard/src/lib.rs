@@ -21,10 +21,15 @@
 //! # The coordinate frame you are writing in
 //!
 //! Every [`Position`](math::Position) an animation hands the host is
-//! **origin-relative**, and the frame is a pure translation of the world's: the
-//! plugin adds the placement's `x/y/z` to your coordinates and sends the result.
-//! There is no rotation, no scaling, and no facing — the axes are the world's
-//! axes, always, no matter where the admin stood when they typed the command.
+//! **origin-relative**: the plugin maps your coordinates into the world and
+//! sends the result. For an unrotated placement (the default) that map is a
+//! pure translation — the plugin adds the placement's `x/y/z` and the axes are
+//! the world's axes, no matter where the admin stood when they typed the
+//! command. A placement *may* carry a rotation (`/billboard spawn … <x> <y>
+//! <z> [yaw] [pitch] [roll]`, vanilla `/tp` conventions): the whole frame then
+//! turns rigidly around the origin, host-side — positions, tweens, particles,
+//! sounds and display orientations all follow, and the animation itself never
+//! sees it. Author in the local frame below and let the admin aim the show.
 //!
 //! ```text
 //!            +Y  up
