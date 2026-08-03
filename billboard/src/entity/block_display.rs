@@ -98,10 +98,10 @@ fn raw_state(id: i32) -> BlockDisplayState {
 entity_handle! {
     /// The absolute owner of a client-side block display entity.
     ///
-    /// Move-only and `!Sync`: it cannot be captured by
-    /// [`spawn`](crate::spawn)'s closure, so ownership never leaves the task
-    /// that created it. Dropping it despawns the entity. To use the entity
-    /// from another task, capture a [`WeakRef`]/[`WeakMut`].
+    /// Move-only, and dropping it despawns the entity. It may be moved into a
+    /// [`spawn`](crate::spawn)ed task (which then owns and despawns it) or lent
+    /// to a [`scope`](crate::scope)d one; capture a [`WeakRef`]/[`WeakMut`]
+    /// instead when the owner has to stay where it is.
     BlockDisplay => BlockDisplayState
 }
 

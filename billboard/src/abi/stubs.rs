@@ -217,3 +217,17 @@ pub unsafe fn emit_particle_item(
 ) {
     unimplemented!("billboard ABI: emit_particle_item is wasm-only")
 }
+
+// --- ABI v4: player snapshots. Asking who is watching needs a server to ask,
+// so these panic like every other crossing; the pure half — building the query
+// struct, parsing the blob, the `facing`/`looking_toward` derivations — is
+// reached without them and is what the tests cover. ---
+pub unsafe fn players_len(_: *const u8) -> i32 {
+    unimplemented!("billboard ABI: players_len is wasm-only")
+}
+pub unsafe fn players_read(_: *const u8, _: *mut u8) {
+    unimplemented!("billboard ABI: players_read is wasm-only")
+}
+pub unsafe fn player_update(_: *const u8, _: usize, _: *mut f64) -> i32 {
+    unimplemented!("billboard ABI: player_update is wasm-only")
+}

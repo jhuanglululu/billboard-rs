@@ -71,8 +71,9 @@ fn raw_state(id: i32) -> ItemDisplayState {
 entity_handle! {
     /// The absolute owner of a client-side item display entity.
     ///
-    /// Same ownership rules as every entity: move-only, `!Sync`, Drop
-    /// despawns; cross tasks with [`WeakRef`]/[`WeakMut`].
+    /// Same ownership rules as every entity: move-only, Drop despawns; move it
+    /// into a task to hand the entity over, or use [`WeakRef`]/[`WeakMut`] to
+    /// drive it from a task while keeping ownership here.
     ///
     /// ```ignore
     /// let mut sword = ItemDisplay::spawn(items::DIAMOND_SWORD, pos);

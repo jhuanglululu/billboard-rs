@@ -37,6 +37,72 @@ pub fn get_text(entity: i32) -> String {
     read_string(len, "text", |buf| unsafe { sys::get_text(entity, buf) })
 }
 
+// --- Player snapshots: a query struct out, a blob back. ---
+
+/// The query `players_len`/`players_read` read out of guest memory: 40 packed
+/// bytes, built here and pointed at by both calls of the pair.
+///
+/// `#[repr(C)]` is the whole point — this struct *is* the wire format, so its
+/// field order and the absence of padding are pinned by the ABI, not by
+/// convenience. Four `f64`s (8-aligned, so the trailing pair of `i32`s fills the
+/// last eight bytes exactly) come to 40 bytes with no holes.
+///
+/// `range` negative means unlimited, `limit` zero or less means unlimited, and
+/// `sort` is 0 for distance-ascending or 1 for name-ascending. The origin is in
+/// placement-local coordinates, like every other position that crosses.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RawQuery {
+    pub origin_x: f64,
+    pub origin_y: f64,
+    pub origin_z: f64,
+    pub range: f64,
+    pub limit: i32,
+    pub sort: i32,
+}
+
+// The 40 bytes the host reads. A field reordered or widened breaks the wire, so
+// say so at compile time rather than in a comment.
+const _: () = assert!(core::mem::size_of::<RawQuery>() == 40);
+const _: () = assert!(core::mem::align_of::<RawQuery>() == 8);
+
+/// Run the query and hand back the raw snapshot blob for `players` to parse.
+///
+/// Both calls get the *same* query pointer, and nothing parks between them, so
+/// the length and the bytes describe one consistent list.
+pub fn players(query: &RawQuery) -> Vec<u8> {
+    let ptr = (query as *const RawQuery).cast::<u8>();
+    let len = unsafe { sys::players_len(ptr) };
+    read_blob(len, "player snapshot", |buf| unsafe {
+        sys::players_read(ptr, buf)
+    })
+}
+
+/// Refresh one player by name: `Some` with `x, y, z, eye_height, yaw, pitch` if
+/// they are still a viewer, `None` if they are not (the host leaves `out`
+/// untouched, so nothing here reads uninitialised data — the buffer is zeroed
+/// and simply discarded).
+pub fn player_update(name: &str) -> Option<[f64; 6]> {
+    let mut out = [0.0f64; 6];
+    let found = unsafe { sys::player_update(name.as_ptr(), name.len(), out.as_mut_ptr()) };
+    (found != 0).then_some(out)
+}
+
+/// [`read_string`]'s protocol for a binary payload: ask for the length, skip the
+/// second call when there is nothing to read, and treat a negative length as the
+/// host contradicting the ABI.
+fn read_blob(len: i32, what: &str, fill: impl FnOnce(*mut u8)) -> Vec<u8> {
+    match len {
+        0 => Vec::new(),
+        n if n > 0 => {
+            let mut buf = vec![0u8; n as usize];
+            fill(buf.as_mut_ptr());
+            buf
+        }
+        n => panic!("host returned a negative {what} length: {n}"),
+    }
+}
+
 // --- Out-pointer reads. ---
 
 pub fn get_position(entity: i32) -> [f64; 3] {

@@ -29,7 +29,8 @@ Three places, in the order they are usually wanted:
    which is the difference between a grid that lines up and one that does not.
 2. **`demo/src/lib.rs`** — the cookbook. One choreographed scene that uses
    essentially the whole surface (all five entity kinds, groups, timelines,
-   paths, palettes, tasks, barriers, signals, channels, seeded randomness),
+   paths, palettes, tasks, scopes, barriers, signals, channels, environ,
+   player snapshots, seeded randomness),
    with a tick-by-tick table at the top and comments explaining *why* each
    piece is shaped the way it is. Copy from it rather than from memory.
 3. **`billboard/tests/`** — behaviour, pinned. Known-answer tests written by
@@ -47,12 +48,31 @@ side: the runtime, the error philosophy, the ABI.
 ```sh
 cargo test                  # native: helpers, layout maths, wire format
 cargo clippy --all-targets  # zero warnings expected
-cargo build --release --target wasm32-unknown-unknown -p billboard
+cargo build --release --target wasm32-unknown-unknown -p demo
 ```
 
 The ABI is `wasm32-unknown-unknown`-only; on a native target the host calls
 are stubs that panic, which is why the tests stay on the pure-guest side of
 the SDK.
+
+### Required link flag
+
+The tasks of one instance share a single linear memory, and the host gives
+each new task its own stack region inside it by writing the guest's shadow
+stack pointer — so a module must export that global:
+
+```toml
+# .cargo/config.toml
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--export=__stack_pointer"]
+```
+
+This workspace carries it in `.cargo/config.toml` at the root (cargo reads
+that file from the invocation directory upwards, and `demo` is built from
+here); an animation crate of its own copies the file to its own root. Miss
+it and the plugin refuses to construct the instance, with an error naming
+the flag. Animations also build `panic = "abort"`, which the workspace
+release profile here already sets.
 
 ### Make your animation crate testable
 
@@ -94,7 +114,10 @@ animation is big or hot enough for either cost to matter.
 
 **Entry point and runtime** — `main` (the `#[billboard::main]` attribute),
 `ExitCode` (how the run ends, and how the host cleans up), `log`,
-`sleep`, `spawn` (fork a task), `Task` (its handle: `join`/`kill`).
+`sleep`, `spawn` (start a task; it may take ownership of anything moved into
+it, since tasks share one memory), `Task` (its handle: `join`/`kill`),
+`scope` (tasks that *borrow* from the spawner, all joined before it returns),
+and `environ` (the operator's read-only key/value settings for this run).
 
 **Math** — `Position` (origin-relative point), `Offset` (a displacement
 between them), `Vector3d` / `Vector3i`, `Velocity`, `Scale`, `Rotation`,
@@ -127,6 +150,11 @@ trait both implement).
 
 **Effects** — `sound` and `particle` (the fire-and-forget builders),
 `SoundCategory`, `Particle`.
+
+**Players** — `players` / `players_with` (a snapshot of who is watching,
+in the placement's own frame), `Query` + `Sort` (host-side filtering,
+sorting and limiting), `Player` (`name`, `position`, `eye_position`, `yaw`,
+`pitch`, `facing`, `looking_toward`, and `update` to refresh one in place).
 
 **Tasks and sync** — `channel` + `Sender` / `Receiver` (typed, `Pod`
 payloads), `Signal`, `Barrier`, `Waitable` (`.and()` / `.or()`), `Policy`.
