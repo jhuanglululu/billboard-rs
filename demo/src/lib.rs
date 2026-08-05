@@ -580,10 +580,13 @@ fn main() -> ExitCode {
     // A two-colour burst that fades as it rises, a note picked from the host's
     // deterministic stream, and the logo folds away.
     let burst_at = origin + Offset::new(0.0, 1.0, 1.0);
+    // An operator can retint the finale via `/billboard env`; unset, this is
+    // the same navy the demo has always closed on.
+    let burst_to = billboard::env::get("burst_color").unwrap_or("#2c2e8f");
     particle(
         Particle::DustTransition {
             from: Color::hex("#f1af15"),
-            to: Color::hex("#2c2e8f"),
+            to: Color::hex(burst_to),
             size: 1.6,
         },
         burst_at,

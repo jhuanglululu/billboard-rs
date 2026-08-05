@@ -29,7 +29,7 @@ fn the_plugin_handshake_export_reports_version_three() {
 /// what lets the host check the engine ABI before it knows the plugin.
 #[test]
 fn the_engine_handshake_export_sits_beside_it() {
-    assert_eq!(_engine_abi(), 1);
+    assert_eq!(_engine_abi(), 2);
     assert_eq!(_engine_abi(), billboard::ENGINE_ABI_VERSION);
     // The two version spaces are independent, and this file proves they are
     // not accidentally the same number.

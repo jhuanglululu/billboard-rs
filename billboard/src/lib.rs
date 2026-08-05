@@ -77,8 +77,10 @@
 //!   (see [`BlockPalette`](helpers::BlockPalette)); host calls are cheap in
 //!   *this* budget but are real packets, which is the other number to watch.
 //! - **Memory: 16 MiB per instance**, and **every task fork copies the whole
-//!   memory**, so a three-task animation can cost three times that. Channel
-//!   buffers count towards it too.
+//!   private memory**, so a three-task animation can cost three times that.
+//!   Channel buffers count towards it too. [`env`]'s key/value pairs do not —
+//!   they live in a host-shared region outside the per-task copy, referenced
+//!   rather than duplicated by every fork.
 //! - **Ticks are 50 ms** and the interpreter runs on a worker pool, never the
 //!   main thread — a slow tick of yours costs you, not the server's TPS.
 //! - **Audience: a 64-block radius** around the placement origin, by default.
@@ -86,6 +88,8 @@
 //!   (rather than pausing) once they leave and the linger window expires — the
 //!   next approach starts a fresh run from the top. Build scenes that read from
 //!   inside that radius, and do not assume an animation ever gets to finish.
+//! - **Environ: a fixed set of string key/value pairs**, snapshotted once when
+//!   the instance starts. See [`env`] below.
 //!
 //! ## How many host calls a tick is too many?
 //!
@@ -137,6 +141,28 @@
 //! all of them; a thousand entities all animating every tick is a packet
 //! firehose, and interpolated `move_to`/`animate` (one packet, client-side
 //! interpolation) is how you avoid needing to.
+//!
+//! # Environ
+//!
+//! [`env`] is a per-placement, read-only set of string key/value pairs a
+//! server operator sets with `/billboard env` — animation-scoped defaults,
+//! placement-scoped overrides on top of them, and a handful of host built-ins
+//! (`bb.x`/`bb.y`/`bb.z`, `bb.type`, and `bb.player` in a per-player
+//! instance). It is snapshotted once when the instance starts and **fixed for
+//! the whole run**: an operator's edit takes effect on the next fresh
+//! instance, never on one already running. There is no way to be notified of
+//! a change and nothing to invalidate — a value read on tick 1 is still good
+//! on tick 10,000.
+//!
+//! Because an animation runs from whatever placements exist, and a placement
+//! may set nothing at all, treat every key as optional and give it a sensible
+//! default in code rather than assuming an operator configured it:
+//!
+//! ```ignore
+//! let speed: f64 = env::get("speed")
+//!     .and_then(|s| s.parse().ok())
+//!     .unwrap_or(1.0);
+//! ```
 
 mod abi;
 pub mod effects;
@@ -149,7 +175,7 @@ pub mod registry;
 // the host allocator — lives in `wasmachine`, shared with any other plugin
 // built on the same engine. Re-exported here so animation code sees one SDK:
 // `billboard::math::Position`, `billboard::sync::Signal`, and so on.
-pub use wasmachine::{math, random, sync};
+pub use wasmachine::{env, math, random, sync};
 
 #[doc(hidden)]
 pub use wasmachine::__rt;

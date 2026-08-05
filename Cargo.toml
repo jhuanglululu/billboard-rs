@@ -12,3 +12,4 @@ edition = "2024"
 panic = "abort"
 opt-level = "s"
 lto = true
+
