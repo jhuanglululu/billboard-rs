@@ -1,0 +1,8 @@
+# Newer LLD (rustc >= 1.97) stopped exporting the allocator-bound globals by
+# default, and the host requires both at instance construction. Harmless on
+# older toolchains, mandatory on new ones.
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "-C", "link-arg=--export=__heap_base",
+    "-C", "link-arg=--export=__data_end",
+]
