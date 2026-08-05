@@ -147,15 +147,4 @@ unsafe extern "C" {
         oz: f64,
         speed: f64,
     );
-
-    // --- ABI v4: player snapshots. The two-call pair carries the same query
-    // pointer on both calls — a 40-byte struct the guest builds in its own
-    // memory (see `marshal::RawQuery`) — so the host filters, sorts and limits
-    // before it reports a length, and reports the length of the same list it
-    // then writes. `player_update` is the cheap per-tick refresh: a fixed six
-    // f64s out, keyed by name. Both are non-deterministic data, like
-    // `random_nondet`: nothing here replays. ---
-    pub fn players_len(query: *const u8) -> i32;
-    pub fn players_read(query: *const u8, buf: *mut u8);
-    pub fn player_update(name_ptr: *const u8, name_len: usize, out: *mut f64) -> i32;
 }

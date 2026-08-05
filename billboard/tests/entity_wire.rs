@@ -8,8 +8,8 @@
 
 use billboard::effects::SoundCategory;
 use billboard::entity::{
-    ArmorStand, BillboardMode, BlockDisplay, BlockState, DisplayContext, EquipmentSlot, ItemStr,
-    PosePart, StandFlags, TextDisplay, TextFlags, WeakMut, WeakRef,
+    BillboardMode, BlockDisplay, BlockState, DisplayContext, EquipmentSlot, ItemStr, PosePart,
+    StandFlags, TextFlags, WeakMut, WeakRef,
 };
 use billboard::helpers::Color;
 use billboard::registry::{ItemId, blocks, items};
@@ -286,18 +286,13 @@ fn an_unknown_display_context_kills_rather_than_guessing() {
     let _ = DisplayContext::from_wire(-1);
 }
 
-/// Compile-time contract of the task-safety model, as of the shared-memory
-/// engine: weak refs are `Sync` (shareable), and an owner handle is `Send`, so
-/// it can be *moved* into a spawned task. It was deliberately `!Sync` while
-/// tasks had fork-copied memories — one handle in two memories would have
-/// despawned twice — and there is one memory now, so the guard is gone.
+/// Compile-time contract of the task-safety model: weak refs must be Sync
+/// (capturable by `spawn`). The owner handle being `!Sync` is enforced by
+/// the compiler at any attempted capture site, which can't be expressed as
+/// a runtime assertion here.
 #[test]
-fn weak_refs_are_sync_and_owners_are_send() {
+fn weak_refs_are_sync() {
     fn requires_sync<T: Sync>() {}
-    fn requires_send<T: Send>() {}
     requires_sync::<WeakRef<BlockDisplay>>();
     requires_sync::<WeakMut<BlockDisplay>>();
-    requires_send::<BlockDisplay>();
-    requires_send::<TextDisplay>();
-    requires_send::<ArmorStand>();
 }

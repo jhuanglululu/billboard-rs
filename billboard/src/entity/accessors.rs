@@ -23,18 +23,18 @@
 /// The owner handle itself: the struct, its `Entity`/sealed impls, weak-ref
 /// constructors, despawn/leak, and the RAII `Drop`.
 ///
-/// `Drop` despawns unconditionally, and that stays sound now that an owner can
-/// be *moved* into a task: the tasks of an instance share one linear memory, so
-/// a moved handle is the same one allocation with the same single owner, and it
-/// is dropped exactly once — in whichever task ended up holding it. What is
-/// still impossible is two tasks owning it at once, which is ordinary Rust
-/// ownership rather than anything this macro has to arrange.
+/// `Drop` despawns unconditionally: the owner can only be dropped in its own
+/// task (it is `!Sync`, so it cannot be captured by a spawned closure), and a
+/// forked child never unwinds the parent's frames.
 macro_rules! entity_handle {
     ($(#[$meta:meta])* $t:ident => $state:ty) => {
         $(#[$meta])*
         #[derive(Debug)]
         pub struct $t {
             id: i32,
+            // Makes the owner !Sync (while staying Send): the compile-time
+            // guard that keeps owner handles out of spawned tasks.
+            _not_sync: ::core::marker::PhantomData<::core::cell::Cell<()>>,
         }
 
         impl crate::entity::sealed::Sealed for $t {}
@@ -45,7 +45,10 @@ macro_rules! entity_handle {
 
         impl $t {
             fn from_id(id: i32) -> $t {
-                $t { id }
+                $t {
+                    id,
+                    _not_sync: ::core::marker::PhantomData,
+                }
             }
 
             /// A read-only weak reference (aliveness + getters).

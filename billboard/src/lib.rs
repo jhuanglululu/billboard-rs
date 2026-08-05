@@ -18,24 +18,6 @@
 //! }
 //! ```
 //!
-//! # Build requirements
-//!
-//! An animation crate must export its shadow stack pointer, because the host
-//! gives every [`spawn`]ed task its own stack region inside the one shared
-//! memory and needs that global to point the new task at it:
-//!
-//! ```text
-//! # .cargo/config.toml of the animation crate
-//! [target.wasm32-unknown-unknown]
-//! rustflags = ["-C", "link-arg=--export=__stack_pointer"]
-//! ```
-//!
-//! Without it the plugin refuses to construct the instance, with an error
-//! naming the flag. Animations also build `panic = "abort"` (a panic routes
-//! through the SDK's hook to the host's `fail`), which is what lets [`scope`]
-//! ignore unwinding entirely. This workspace's `demo/` is set up both ways —
-//! copy its `Cargo.toml` and the workspace `.cargo/config.toml`.
-//!
 //! # The coordinate frame you are writing in
 //!
 //! Every [`Position`](math::Position) an animation hands the host is
@@ -94,13 +76,9 @@
 //!   and a poor budget for, say, converting a whole colour table per lookup
 //!   (see [`BlockPalette`](helpers::BlockPalette)); host calls are cheap in
 //!   *this* budget but are real packets, which is the other number to watch.
-//! - **Memory: 16 MiB per instance** — *one* linear memory, shared by every
-//!   task of the instance. Spawning does not multiply it: a task costs its own
-//!   **stack region** (64 KiB by default, host config), charged to the same
-//!   budget, and nothing else. Channel buffers count towards it too. A value
-//!   moved into a task is not copied, and [`scope`] can lend a task a borrow of
-//!   the spawner's data — see [`spawn`] and [`scope`] for what that means for
-//!   ownership.
+//! - **Memory: 16 MiB per instance**, and **every task fork copies the whole
+//!   memory**, so a three-task animation can cost three times that. Channel
+//!   buffers count towards it too.
 //! - **Ticks are 50 ms** and the interpreter runs on a worker pool, never the
 //!   main thread — a slow tick of yours costs you, not the server's TPS.
 //! - **Audience: a 64-block radius** around the placement origin, by default.
@@ -165,7 +143,6 @@ pub mod effects;
 pub mod entity;
 mod exit;
 pub mod helpers;
-pub mod players;
 pub mod registry;
 
 // The generic guest core — tasks, sync, randomness, math, the panic hook and
@@ -173,17 +150,6 @@ pub mod registry;
 // built on the same engine. Re-exported here so animation code sees one SDK:
 // `billboard::math::Position`, `billboard::sync::Signal`, and so on.
 pub use wasmachine::{math, random, sync};
-
-/// The animation's environment: the read-only key/value strings an operator set
-/// with `/bb env`, plus the host's own `bb.*` built-ins.
-///
-/// Fixed for the run — changing it restarts the animation — and loaded before
-/// `main`, so a lookup is a plain memory read rather than a host call.
-///
-/// ```ignore
-/// let speed: f64 = environ().get("speed").unwrap_or("1.0").parse().unwrap_or(1.0);
-/// ```
-pub use wasmachine::{Environ, environ};
 
 #[doc(hidden)]
 pub use wasmachine::__rt;
@@ -199,13 +165,8 @@ pub use wasmachine::__rt;
 /// became `_engine_main`, leaving module `"billboard"` to the entity and effect
 /// imports alone. Nothing in this module's own list changed — but a v2 guest
 /// asks the host for engine functions under the plugin's name, so the two
-/// cannot be mixed. Version 4 is the shared-memory generation: the engine below
-/// dropped `fork` for `spawn` (one linear memory, a stack region per task, so
-/// guests must now export `__stack_pointer`), gained the read-only
-/// [`environ`], and this module gained the player snapshot imports
-/// ([`players`]). The engine change alone makes a v3 module unrunnable here, so
-/// this is not an additive bump either.
-pub const ABI_VERSION: i32 = 4;
+/// cannot be mixed.
+pub const ABI_VERSION: i32 = 3;
 
 /// The engine ABI the SDK is built against, re-exported so
 /// `#[billboard::main]`'s generated `_engine_abi` export can reach it through
@@ -214,7 +175,7 @@ pub use wasmachine::ENGINE_ABI_VERSION;
 
 pub use billboard_macros::main;
 pub use exit::ExitCode;
-pub use wasmachine::{Scope, ScopedTask, Task, log, scope, sleep, spawn};
+pub use wasmachine::{Task, log, sleep, spawn};
 
 /// The entry-point machinery `#[billboard::main]` expands into, re-exported so
 /// the generated attribute resolves inside an animation's own crate (which
@@ -241,14 +202,7 @@ pub use wasmachine_macros::sdk_main as __sdk_main;
 pub use bytemuck;
 
 /// Define a channel payload: a `#[repr(C)]` struct that is `Pod`, so its raw
-/// bytes can be handed to the host and back.
-///
-/// Tasks share one memory, so a channel is not how data *reaches* another
-/// task — [`spawn`] can move a value in and [`scope`] can lend it a borrow.
-/// A channel is the host-side queue that also does the *waiting*: a send stages
-/// the payload's bytes host-side and a receive copies them back out, which is
-/// what lets a receiver park on an empty queue. Plain-bytes-only is what makes
-/// that staging meaningful — the host holds bytes, not a Rust value.
+/// bytes mean the same thing in another task's copy of memory.
 ///
 /// ```ignore
 /// billboard::payload! {
@@ -265,11 +219,9 @@ pub use bytemuck;
 ///
 /// Every field must itself be `Pod` — the SDK's math types, [`Color`], [`Ticks`]
 /// and [`SplitRng`] all are. A `String`, a `Vec` or a reference is a compile
-/// error: the host stages raw bytes, and a pointer that goes out and comes back
-/// through it is a pointer the compiler can no longer vouch for. Send the data,
-/// or — since the memory is shared — move the owning value into the task with
-/// [`spawn`] and skip the channel. Padding is rejected at compile time too, so
-/// order fields largest-first if the derive complains.
+/// error, because the heap it points into does not exist in the receiving task.
+/// Padding is rejected at compile time too, so order fields largest-first if the
+/// derive complains.
 ///
 /// Expands to `#[repr(C)]` plus `Clone, Copy, Debug, PartialEq, Pod, Zeroable`;
 /// write the derive by hand (see [`bytemuck`]) if you need a different set.
@@ -322,13 +274,12 @@ pub mod prelude {
     pub use crate::math::{
         Degrees, Offset, Position, Radians, Rotation, Scale, Ticks, Vector3d, Vector3i, Velocity,
     };
-    pub use crate::players::{Player, Query, Sort, players, players_with};
     pub use crate::random::{Rng, SplitRng, default_random};
     pub use crate::registry::{
         Axis, BlockId, BlockStateBuilder, Facing, Half, ItemId, blocks, items,
     };
     pub use crate::sync::{Barrier, Policy, Receiver, Sender, Signal, Waitable, channel};
-    pub use crate::{ExitCode, Task, environ, log, main, scope, sleep, spawn};
+    pub use crate::{ExitCode, Task, log, main, sleep, spawn};
     /// The channel-payload bound, and the derives that satisfy it.
     ///
     /// Reach for [`payload!`](crate::payload) to declare a payload struct — it

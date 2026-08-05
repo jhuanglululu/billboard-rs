@@ -18,10 +18,10 @@ fn animation() -> ExitCode {
 }
 
 #[test]
-fn the_plugin_handshake_export_reports_version_four() {
-    assert_eq!(_billboard_abi(), 4);
+fn the_plugin_handshake_export_reports_version_three() {
+    assert_eq!(_billboard_abi(), 3);
     // One source of truth: the macro exports the crate's constant.
-    assert_eq!(billboard::ABI_VERSION, 4);
+    assert_eq!(billboard::ABI_VERSION, 3);
 }
 
 /// Beside Billboard's handshake sits the engine's, emitted by the same
@@ -29,7 +29,7 @@ fn the_plugin_handshake_export_reports_version_four() {
 /// what lets the host check the engine ABI before it knows the plugin.
 #[test]
 fn the_engine_handshake_export_sits_beside_it() {
-    assert_eq!(_engine_abi(), 2);
+    assert_eq!(_engine_abi(), 1);
     assert_eq!(_engine_abi(), billboard::ENGINE_ABI_VERSION);
     // The two version spaces are independent, and this file proves they are
     // not accidentally the same number.

@@ -1,23 +1,18 @@
 //! Entities, states, and the ownership model.
 //!
 //! Every entity has exactly one absolute owner (move-only struct; Drop
-//! despawns). Ownership is plain Rust ownership: the tasks of an instance share
-//! one linear memory, so an owner handle can be **moved** into a
-//! [`spawn`](crate::spawn)ed task — one allocation, one owner, one despawn, in
-//! whichever task ends up holding it — and lent to a [`scope`](crate::scope)d
-//! one by reference. What you cannot do is own it in two places at once, which
-//! the borrow checker already says.
-//!
-//! Weak references (`Sync + Clone`, and `Copy`-cheap to hand around) are for
-//! the other shape: when the owner must *stay* here and another task only needs
-//! to observe or drive the entity. They are the only fallible APIs —
-//! everything else that goes wrong kills the animation with a clear message.
+//! despawns). Owner handles are `!Sync`, so they cannot be captured by
+//! `spawn`'s `Sync`-bounded closure — ownership provably never crosses into
+//! another task, at compile time, with no runtime bookkeeping. Weak
+//! references (`Sync + Clone`) are how other tasks observe or drive an
+//! entity, and they are the only fallible APIs — everything else that goes
+//! wrong kills the animation with a clear message.
 //!
 //! The SDK caches nothing: handles and weak refs hold only the entity id.
-//! Every getter asks the host, the single source of truth for a value several
-//! tasks may be driving. Applying a state issues the per-attribute host calls;
-//! there is no cache to diff against, so discrete fields (block, item, text)
-//! are always resent too.
+//! Every getter asks the host, the single source of truth across forked
+//! memories. Applying a state issues the per-attribute host calls; there is
+//! no cache to diff against, so discrete fields (block, item, text) are always
+//! resent too.
 //!
 //! # The entity kinds
 //!
@@ -450,9 +445,8 @@ pub trait Entity: sealed::Sealed {
 #[derive(Debug)]
 pub struct WeakRef<T: Entity> {
     id: i32,
-    // fn() -> T keeps this Sync/Send regardless of T: a weak ref is an entity
-    // id and nothing else, so it is as shareable as the id is, whatever the
-    // entity type it names happens to be.
+    // fn() -> T keeps this Sync/Send regardless of T (the handle type
+    // itself is !Sync on purpose; the weak ref must not inherit that).
     _entity: PhantomData<fn() -> T>,
 }
 

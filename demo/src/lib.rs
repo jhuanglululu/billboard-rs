@@ -1,4 +1,4 @@
-//! **Billboard demo — "NOW SHOWING".**
+//! **Billboard v2 demo — "NOW SHOWING".**
 //!
 //! A panel assembles itself, a colour ramp sweeps across a strip of blocks
 //! chosen by perceptual nearest-match, a logo orbits as one rigid group, a
@@ -6,17 +6,10 @@
 //! and dust traces a circle in mid-air — with five tasks kept in step by a
 //! barrier, a signal, a composite wait and a channel.
 //!
-//! The v3 surface is here too: the operator's [`environ`] tunes the show
-//! without a rebuild, a [`scope`] lends two tasks a *borrow* of this function's
-//! locals instead of a copy, and [`players`] asks who is actually watching.
-//!
 //! This file is the SDK's worked example *and* the plugin's integration-test
 //! fixture, so it is choreographed and commented rather than clever.
 //!
-//! # Timing — total scripted run: **619 ticks ≈ 31.0 s** (task 0's own sleeps)
-//!
-//! At the default `speed` (see the environ section below); an operator can
-//! stretch or shrink the *performers'* tempo, never this scripted spine.
+//! # Timing — total scripted run: **603 ticks ≈ 30.2 s** (task 0's own sleeps)
 //!
 //! | Section | Ticks | Ends at |
 //! |---|---|---|
@@ -33,9 +26,8 @@
 //! | K. spotlight, then the bow | 90 | 515 |
 //! | L. joins (performers already finished) | 0 | 515 |
 //! | M. lamp checkpoint restore | 10 | 525 |
-//! | N. scoped borrow, two halves of the strip (8 × 2) | 16 | 541 |
-//! | O. farewell marquee (19 frames × 2) | 38 | 579 |
-//! | P. burst and settle (20 + 20) | 40 | **619** |
+//! | N. farewell marquee (19 frames × 2) | 38 | 563 |
+//! | O. burst and settle (20 + 20) | 40 | **603** |
 //!
 //! The performers run inside that window and are done before the joins: the
 //! lamp pulse ends at ~156, the marquee at ~180, the dust orbit at ~204, the
@@ -47,13 +39,8 @@
 //! *deterministic* stream and nothing here ever calls the non-deterministic
 //! one — the host-call trace is reproducible, which is what makes this usable
 //! as a fixture. Per-task randomness comes from [`SplitRng`] splits taken
-//! *before* spawning: an unsplit generator handed to two tasks is one
-//! generator, so they would fight over one sequence rather than each having
-//! their own.
-//!
-//! The environment is part of that: with nothing set, every key below falls
-//! back to the default written beside it and the trace is exactly the one this
-//! file describes.
+//! *before* spawning: a fork copies memory, so an unsplit generator would
+//! replay the same sequence in every task.
 //!
 //! One note for whoever asserts on the trace: `random_nondet` still appears in
 //! the module's **import** list, because `default_random()` picks its stream at
@@ -79,10 +66,10 @@ billboard::payload! {
     /// A waypoint handed to the runner task through a channel.
     ///
     /// `payload!` makes it `#[repr(C)]` and `Pod`, which is what lets it cross:
-    /// the channel stages the payload host-side (that staging is what lets the
-    /// receiver *park* on an empty queue), so what crosses is bytes, and every
-    /// field has to be plain data with a known layout. A `String` or a `Vec`
-    /// here would be a compile error. 24 + 8 + 16 = 48 bytes, no padding.
+    /// every field is plain data with a known layout, so the bytes mean the same
+    /// thing in the receiving task's *copy* of memory. A `String` or a `Vec` in
+    /// here would be a compile error — rightly, since its heap would not exist
+    /// over there. 24 + 8 + 16 = 48 bytes, no padding.
     struct Waypoint {
         /// Where to go next.
         target: Position,
@@ -109,31 +96,6 @@ fn main() -> ExitCode {
     let mut scenery = default_random();
 
     let origin = Position::new(0.0, 4.0, 0.0);
-
-    // The operator's knobs, set with `/bb env demo set <key> <value>` and fixed
-    // for this run (changing one restarts the instance, so a value read here is
-    // still true at the end). Every key has a default, which is what keeps this
-    // file usable as a fixture: with an empty environment the run below is
-    // exactly the one the table at the top describes.
-    //
-    // `speed` scales the *performers'* tempo only. Task 0's scripted sleeps are
-    // the show's spine and stay put — an animation that let an operator stretch
-    // its whole schedule would have no schedule to document.
-    let speed = environ()
-        .get("speed")
-        .and_then(|value| value.parse::<f64>().ok())
-        // A bad value is the operator's typo, not a reason to kill the show:
-        // fall back, and clamp what does parse to something that still reads as
-        // an animation.
-        .unwrap_or(1.0)
-        .clamp(0.25, 4.0);
-    // Sub-tick precision would be a lie: sleeps are whole ticks, so a tempo is
-    // really "how many ticks between frames", at least one.
-    let orbit_step = Ticks::new(((2.0 / speed).round() as u64).max(1));
-    log(&format!(
-        "demo: speed {speed:.2}, orbit step {} ticks",
-        orbit_step.count()
-    ));
 
     // ---------------------------------------------------------------- A ----
     // The panel glides up into place, one column slightly after another. Block
@@ -213,11 +175,8 @@ fn main() -> ExitCode {
         sleep(Ticks::new(2));
     }
 
-    // The cast. These owners stay in this function — main outlives every
-    // performer and restores their state at the end — so the tasks get weak
-    // references. (Since tasks share one memory, an owner *can* be moved into a
-    // task instead when the task should own and despawn it; the marquee's sign
-    // below is the shape that does.)
+    // The cast. Owner handles are `!Sync` and cannot be captured by a task, so
+    // the performers get weak references — the compiler enforces it.
     let mut lamp = BlockDisplay::spawn(blocks::SEA_LANTERN, Position::new(0.0, 4.0, 0.45));
     // Checkpoint the lamp fresh from the host, to restore it at the end.
     let resting = lamp.state();
@@ -255,7 +214,7 @@ fn main() -> ExitCode {
 
     // ---------------------------------------------------------------- C ----
     // Choreography objects. All host-side and addressed by a plain integer, so
-    // they are `Sync + Copy` and cost nothing to hand to every task.
+    // they are `Sync + Copy` and survive the fork into every task for free.
     let ready = Barrier::new(CAST);
     let cue = Signal::new();
     let spotlight = Signal::new();
@@ -343,7 +302,7 @@ fn main() -> ExitCode {
                         .speed(0.0)
                         .emit();
                 }
-                sleep(orbit_step);
+                sleep(Ticks::new(2));
             }
         }
     });
@@ -601,54 +560,7 @@ fn main() -> ExitCode {
     ));
     sleep(Ticks::new(10));
 
-    // Who is actually out there? A snapshot of the placement's viewers, in the
-    // same local frame everything else here is written in — empty whenever
-    // nobody is watching, which is the case every caller has to handle.
-    if let Some(nearest) = players_with(Query::new().range(24.0).limit(1)).first() {
-        // `looking_toward` is the "is anyone watching" check: degrees between
-        // their gaze and the stage, 0 being straight at it.
-        log(&format!(
-            "demo: {} is {:.0} blocks out and {:.0} degrees off the stage",
-            nearest.name(),
-            (nearest.position() - origin).length(),
-            nearest.looking_toward(origin),
-        ));
-    } else {
-        log("demo: nobody in the front rows");
-    }
-
     // ---------------------------------------------------------------- N ----
-    // Two tasks that *borrow*. `scope` cannot return until both have ended, so
-    // their closures may hold references to this function's locals — the
-    // gradient and the palette go in by reference, with no `clone()` and no
-    // 'static in sight, and the halves of the strip are `&mut` slices split off
-    // one Vec. (Compare the orbit performer above: a plain `spawn` is 'static,
-    // so it had to take a copy of the ramp.)
-    let (near_half, far_half) = strip.split_at_mut(STRIP_W / 2);
-    let ramp = &ramp;
-    let palette = &palette;
-    scope(|s| {
-        s.spawn(move || {
-            for step in 0..8u32 {
-                for tile in near_half.iter_mut() {
-                    tile.set_block(palette.nearest(ramp.sample(step as f64 / 8.0)));
-                }
-                sleep(Ticks::new(2));
-            }
-        });
-        s.spawn(move || {
-            for step in 0..8u32 {
-                for tile in far_half.iter_mut() {
-                    tile.set_block(palette.nearest(ramp.sample(1.0 - step as f64 / 8.0)));
-                }
-                sleep(Ticks::new(2));
-            }
-        });
-    });
-    // Both halves are finished and the borrows are over, so `strip` is usable
-    // again right here.
-
-    // ---------------------------------------------------------------- O ----
     // A farewell scroll, and one strip tile flipped to a lit lamp for
     // punctuation.
     if let Some(tile) = strip.first_mut() {
@@ -664,7 +576,7 @@ fn main() -> ExitCode {
     });
     text::marquee(&mut sign, FAREWELL, 10, Ticks::new(2), 1);
 
-    // ---------------------------------------------------------------- P ----
+    // ---------------------------------------------------------------- O ----
     // A two-colour burst that fades as it rises, a note picked from the host's
     // deterministic stream, and the logo folds away.
     let burst_at = origin + Offset::new(0.0, 1.0, 1.0);
